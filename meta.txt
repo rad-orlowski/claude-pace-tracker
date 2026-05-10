@@ -1,9 +1,14 @@
 // ==UserScript==
 // @name         Claude.ai Usage Pace Indicator
-// @namespace    https://claude.ai/
+// @namespace    https://github.com/rad-orlowski/claude-pace-tracker
 // @version      3.5.0
 // @description  Adds a pace marker and over/under pace badge to each bucket on the usage page at claude.ai/settings/usage
-// @author       Rad Orlowski <182496955+rad-orlowski@users.noreply.github.com>
+// @author       Rad Orlowski (https://github.com/rad-orlowski)
+// @homepageURL  https://github.com/rad-orlowski/claude-pace-tracker
+// @supportURL   https://github.com/rad-orlowski/claude-pace-tracker/issues
+// @updateURL    https://github.com/rad-orlowski/claude-pace-tracker/raw/main/dist/claude-usage-pace.user.js
+// @downloadURL  https://github.com/rad-orlowski/claude-pace-tracker/raw/main/dist/claude-usage-pace.user.js
+// @license      GPL-3.0-or-later
 // @match        https://claude.ai/settings/usage*
 // @run-at       document-start
 // @grant        none

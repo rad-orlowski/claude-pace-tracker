@@ -1,6 +1,12 @@
 CLAUDE.md
 .claude/
 .claude_files
+.serena/
 
 node_modules/
 docs/
+
+# IDE
+.idea/
+.vscode/
+*.iml

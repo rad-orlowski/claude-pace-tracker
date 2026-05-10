@@ -32,6 +32,8 @@ Tampermonkey will auto-update from this repo when new versions ship (via `@updat
 
 If you'd rather use the minified build: [claude-usage-pace.min.user.js](https://github.com/rad-orlowski/claude-pace-tracker/raw/main/dist/claude-usage-pace.min.user.js).
 
+Prefer to **pin a specific version** instead of auto-updating? Grab the userscript from the [Releases page](https://github.com/rad-orlowski/claude-pace-tracker/releases) — each release has the built `.user.js` attached, so a URL like `releases/download/vX.Y.Z/claude-usage-pace.user.js` will always point at that exact version.
+
 ## Configuration
 
 A gear icon appears on the usage page. Click it to adjust:
@@ -71,6 +73,10 @@ The session bucket uses wall-clock elapsed time within the 5-hour window, not ac
 - Anthropic can change the usage page DOM at any time; the script locates rows by their heading text (`Current session`, `All models`, `Sonnet only`, `Opus only`). If those strings change, the overlay won't appear and you'll see a console warning.
 - The script assumes a single timezone (your browser's local time) for the active-hours calculation. If you cross timezones in a single billing week, the numbers will be slightly off.
 - "Active hours" is a heuristic for solo workday usage. If you use Claude in long evening sessions, lower `Sleep starts at` or widen your active window.
+
+## Changelog
+
+See the [Releases page](https://github.com/rad-orlowski/claude-pace-tracker/releases) — each release has auto-generated notes from the commits in that version.
 
 ## Development
 

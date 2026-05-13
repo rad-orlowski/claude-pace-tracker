@@ -15,8 +15,12 @@ const CFG = { activeStartH: ACTIVE_START_H, activeEndH: ACTIVE_END_H, sleepStart
 
 type Store = ReturnType<typeof makeStore>;
 
-export async function getPaceStatsHandler(store: Store) {
-  const stats = await store.loadStats();
+export async function getPaceStatsHandler(store: Store, triggerPoll?: () => Promise<void>) {
+  let stats = await store.loadStats();
+  if (!stats && triggerPoll) {
+    await triggerPoll();
+    stats = await store.loadStats();
+  }
   if (!stats) {
     return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'No data yet — poller has not completed a cycle. Try again in a moment.' }) }] };
   }
@@ -29,8 +33,12 @@ export async function getPaceStatsHandler(store: Store) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(stats) }] };
 }
 
-export async function getSituationHandler(store: Store) {
-  const stats = await store.loadStats();
+export async function getSituationHandler(store: Store, triggerPoll?: () => Promise<void>) {
+  let stats = await store.loadStats();
+  if (!stats && triggerPoll) {
+    await triggerPoll();
+    stats = await store.loadStats();
+  }
   if (!stats) {
     return { content: [{ type: 'text' as const, text: 'No data yet — poller has not completed a cycle.' }] };
   }
@@ -40,7 +48,9 @@ export async function getSituationHandler(store: Store) {
       isError: true,
     };
   }
-  return { content: [{ type: 'text' as const, text: `${stats.situation}: ${stats.message}` }] };
+  const ageMin = Math.round((Date.now() - Date.parse(stats.updatedAt)) / 60000);
+  const meta   = `[credentials: valid, data: ${ageMin}m ago]`;
+  return { content: [{ type: 'text' as const, text: `${stats.situation}: ${stats.message}\n${meta}` }] };
 }
 
 // ─── MCP server setup ─────────────────────────────────────────────────────────
@@ -60,14 +70,14 @@ server.tool(
   'get_pace_stats',
   'Get current Claude usage pace statistics (weekly and session buckets, pace delta, situation)',
   {},
-  async () => getPaceStatsHandler(defaultStore),
+  async () => getPaceStatsHandler(defaultStore, () => poller.poll()),
 );
 
 server.tool(
   'get_situation',
   'Get the current pace situation classification and advisory message',
   {},
-  async () => getSituationHandler(defaultStore),
+  async () => getSituationHandler(defaultStore, () => poller.poll()),
 );
 
 async function main() {

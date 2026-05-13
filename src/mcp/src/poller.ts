@@ -43,7 +43,7 @@ export class Poller {
       return;
     }
 
-    if (res.status === 401) {
+    if (res.status === 401 || res.status === 403) {
       const existing = await this.store.loadStats();
       await this.store.saveStats({
         ...(existing ?? { weekly: { deltaPp: 0, utilizationPct: 0, elapsedPct: 0 }, session: { deltaPp: 0, utilizationPct: 0 } }),
@@ -52,7 +52,7 @@ export class Poller {
         situation:         existing?.situation ?? null,
         message:           existing?.message   ?? null,
       });
-      console.error('[pace-mcp] credentials expired (401)');
+      console.error(`[pace-mcp] credentials expired (${res.status})`);
       return;
     }
 

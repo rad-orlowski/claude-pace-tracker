@@ -29,7 +29,9 @@ An optional companion MCP server lets Claude Code query your pace statistics mid
 
 ## Install
 
-1. Install [Tampermonkey](https://www.tampermonkey.net/) (or Violentmonkey / Greasemonkey) in your browser.
+### Userscript
+
+1. Install [Tampermonkey](https://www.tampermonkey.net/) in your browser. (Violentmonkey / Greasemonkey work for the overlay, but the optional Claude Code connect feature requires Tampermonkey.)
 2. Click this link to install: **[claude-usage-pace.user.js](https://github.com/rad-orlowski/claude-pace-tracker/raw/main/dist/claude-usage-pace.user.js)**
 3. Tampermonkey opens an install screen — confirm.
 4. Open <https://claude.ai/settings/usage>. The pace overlay appears alongside the existing usage bars.
@@ -39,6 +41,20 @@ Tampermonkey will auto-update from this repo when new versions ship (via `@updat
 If you'd rather use the minified build: [claude-usage-pace.min.user.js](https://github.com/rad-orlowski/claude-pace-tracker/raw/main/dist/claude-usage-pace.min.user.js).
 
 Prefer to **pin a specific version** instead of auto-updating? Grab the userscript from the [Releases page](https://github.com/rad-orlowski/claude-pace-tracker/releases) — each release has the built `.user.js` attached, so a URL like `releases/download/vX.Y.Z/claude-usage-pace.user.js` will always point at that exact version.
+
+### MCP server (optional)
+
+Lets Claude Code query your pace stats mid-session. See the [full setup guide](src/mcp/README.md) for configuration and usage. Quick start:
+
+```bash
+git clone https://github.com/rad-orlowski/claude-pace-tracker.git
+cd claude-pace-tracker/src/mcp
+bun install && bun run build
+```
+
+Then add it to `~/.claude.json` — details in [src/mcp/README.md](src/mcp/README.md).
+
+> **First-time connection:** when you click Connect in the gear panel, Tampermonkey may show a one-time cross-origin permission prompt for `http://localhost:4299`. Allow it — the script needs to reach the local MCP sidecar. The `@connect localhost` header in the script grants this permission automatically on future loads.
 
 ## Configuration
 
@@ -70,9 +86,10 @@ The session bucket uses wall-clock elapsed time within the 5-hour window, not ac
 
 ## Privacy
 
-- **No telemetry, no third-party calls.** The script only reads the usage data that the Claude.ai page itself already requests.
-- All data stays in your browser.
-- The only persistent storage is your settings, in `localStorage` under the key `__claude_pace_cfg`.
+- **No telemetry.** Neither the userscript nor the MCP server sends data to any third party.
+- The userscript only reads usage data that the Claude.ai page itself already requests; all data stays in your browser.
+- The optional MCP server runs entirely on your machine. It fetches `claude.ai/api/…` using your session cookie (which you provide), and writes stats to `~/.cache/claude-pace-tracker/stats.json`. Nothing leaves your machine beyond that API call.
+- The only browser-side persistent storage is your settings, in `localStorage` under the key `__claude_pace_cfg`.
 
 ## Caveats
 
@@ -87,13 +104,18 @@ See the [Releases page](https://github.com/rad-orlowski/claude-pace-tracker/rele
 ## Development
 
 ```bash
-bun install
-bun run build         # → dist/claude-usage-pace.user.js + .min.user.js
-bun test              # run all tests
+bun install            # installs root + MCP server deps (via postinstall)
+bun run build          # builds userscript + MCP server
+
+# Userscript tests
+bun test
 bun test tests/math.test.mjs   # single test file
+
+# MCP server tests
+cd src/mcp && bun test
 ```
 
-The bundle is built by `build.ts`: Bun bundles `src/main.js` as an IIFE, prepends the userscript header from `meta.txt`, and writes both readable and minified outputs to `dist/`.
+`build.ts` bundles `src/userscript/main.js` as an IIFE, prepends the userscript header from `meta.txt`, and writes both readable and minified outputs to `dist/`. The MCP server is bundled into `src/mcp/dist/index.js`.
 
 ## Bugs & contributions
 
@@ -103,6 +125,8 @@ Open an [issue](https://github.com/rad-orlowski/claude-pace-tracker/issues) with
 - What you actually saw (a screenshot helps)
 - Browser + Tampermonkey version
 - Anything in the browser console prefixed with `[claude-pace]`
+
+For MCP server issues, also include any output from stderr when running `bun dist/index.js` directly, and the contents of `~/.cache/claude-pace-tracker/stats.json` if it exists.
 
 PRs welcome. No formal contribution process — keep changes focused, run `bun test` before opening.
 

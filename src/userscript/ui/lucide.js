@@ -1,10 +1,12 @@
+const UW = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
+
 let lucideReady = false;
 let lucideLoadPromise = null;
 
 export function isLucideReady() { return lucideReady; }
 
 export function ensureLucide() {
-  if (window.lucide) { lucideReady = true; return Promise.resolve(); }
+  if (UW.lucide) { lucideReady = true; return Promise.resolve(); }
   if (lucideLoadPromise) return lucideLoadPromise;
   lucideLoadPromise = new Promise((resolve, reject) => {
     const s = document.createElement('script');
@@ -27,7 +29,7 @@ export function makeLucideIcon(name, size = 12) {
 }
 
 export function renderLucideIcons(container) {
-  if (!window.lucide) return;
-  try { window.lucide.createIcons({ nodes: [container] }); }
-  catch (_) { window.lucide.createIcons(); }
+  if (!UW.lucide) return;
+  try { UW.lucide.createIcons({ nodes: [container] }); }
+  catch (_) { UW.lucide.createIcons(); }
 }

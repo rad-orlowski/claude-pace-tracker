@@ -10,7 +10,7 @@ The MCP server polls the Claude usage API directly using session credentials you
 
 - [Claude Code](https://claude.ai/code) installed
 - [Tampermonkey](https://www.tampermonkey.net/) with the [claude-pace-tracker userscript](https://github.com/rad-orlowski/claude-pace-tracker) installed
-- Node.js 18+ or [Bun](https://bun.sh/)
+- [Bun](https://bun.sh/) (the server uses Bun-specific APIs; Node.js is not supported)
 - `jq` (for the shell scripts)
 
 ## Installation
@@ -26,13 +26,13 @@ bun run build
 
 **2. Add to Claude Code**
 
-Edit `~/.claude/settings.json` and add under `mcpServers`:
+Edit `~/.claude.json` and add under `mcpServers`:
 
 ```json
 {
   "mcpServers": {
     "pace-tracker": {
-      "command": "node",
+      "command": "bun",
       "args": ["/absolute/path/to/claude-pace-tracker/src/mcp/dist/index.js"],
       "env": {
         "PACE_POLL_INTERVAL_MIN": "5",
@@ -43,7 +43,13 @@ Edit `~/.claude/settings.json` and add under `mcpServers`:
 }
 ```
 
-**3. Connect your credentials**
+Replace `/absolute/path/to/claude-pace-tracker` with the actual path where you cloned the repo.
+
+**3. Restart Claude Code**
+
+Claude Code starts MCP servers automatically — but only on launch. Quit and reopen Claude Code (or run `/mcp` in a session to verify the server is listed and connected).
+
+**4. Connect your credentials**
 
 1. Open [claude.ai/settings/usage](https://claude.ai/settings/usage) in your browser.
 2. Click the ⚙ gear icon next to "Plan usage limits".
@@ -99,10 +105,10 @@ When your Claude session token expires:
 
 ## Troubleshooting
 
-**"MCP server not reachable"** — The server must be running. Claude Code starts it automatically when configured in `settings.json`. Check `~/.claude/logs/` for startup errors.
+**"MCP server not running" / "MCP server not reachable"** — Claude Code starts the server on launch. If you just edited `~/.claude.json`, restart Claude Code. Check `~/.claude/logs/` for startup errors, and verify the path in `~/.claude.json` points to the built `dist/index.js`.
 
-**Port conflict** — Change `PACE_HTTP_PORT` in both `settings.json` (env) and the userscript's gear panel port field.
+**Port conflict** — Change `PACE_HTTP_PORT` in both `~/.claude.json` (env) and the userscript's gear panel port field.
 
-**"Could not read cookies"** — Ensure Tampermonkey is installed (not Violentmonkey). The `GM_cookie` API is Tampermonkey-specific.
+**"Could not read cookies"** — Ensure Tampermonkey is installed (not Violentmonkey). The `GM.cookie` API is Tampermonkey-specific.
 
 **No data after connecting** — Wait up to `PACE_POLL_INTERVAL_MIN` minutes for the first poll, or reload the usage page (which triggers an immediate capture).

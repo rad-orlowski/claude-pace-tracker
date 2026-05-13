@@ -31,7 +31,7 @@ function rerenderMarkersFromLast() {
   if (last) renderAllMarkers(last, getCfg());
 }
 
-LOG('script loaded, version 3.5.0');
+LOG('script loaded, version 3.6.0');
 
 installCapture(onUsage, () => {
   if (!isPolling()) startPolling(getCfg());

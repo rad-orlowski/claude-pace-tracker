@@ -2,11 +2,26 @@ import { getCapturedOrgId, getCookieString } from '../../capture.js';
 
 const BANNER_ID = '__claude-pace-reconnect-banner';
 
+function gmFetch(url, { method = 'GET', headers = {}, body = undefined, timeoutMs = 3000 } = {}) {
+  return new Promise((resolve, reject) => {
+    GM_xmlhttpRequest({
+      method,
+      url,
+      headers,
+      data: body,
+      timeout: timeoutMs,
+      onload:    (r) => resolve(r),
+      onerror:   ()  => reject(new Error('network error')),
+      ontimeout: ()  => reject(new Error('timeout')),
+    });
+  });
+}
+
 async function fetchMcpStatus(port) {
   try {
-    const res = await fetch(`http://localhost:${port}/status`, { signal: AbortSignal.timeout(1500) });
-    if (!res.ok) return null;
-    return await res.json();
+    const r = await gmFetch(`http://localhost:${port}/status`, { timeoutMs: 1500 });
+    if (r.status < 200 || r.status >= 300) return null;
+    return JSON.parse(r.responseText);
   } catch { return null; }
 }
 
@@ -15,13 +30,12 @@ async function reconnect(port, banner) {
   const cookie = await getCookieString();
   if (!orgId || !cookie) return;
   try {
-    const res = await fetch(`http://localhost:${port}/credentials`, {
+    const r = await gmFetch(`http://localhost:${port}/credentials`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ orgId, cookie }),
-      signal: AbortSignal.timeout(3000),
     });
-    if (res.ok) banner.remove();
+    if (r.status >= 200 && r.status < 300) banner.remove();
   } catch {}
 }
 

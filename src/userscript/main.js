@@ -6,6 +6,7 @@ import { ensureLucide } from './ui/lucide.js';
 import { injectPaceStyles } from './ui/styles.js';
 import { installLifecycle } from './lifecycle.js';
 import { tryInjectGear } from './ui/components/settings.js';
+import { maybeShowReconnectBanner } from './ui/components/reconnect-banner.js';
 
 const LOG  = (...args) => console.log('[claude-pace]', ...args);
 const WARN = (...args) => console.warn('[claude-pace]', ...args);
@@ -47,6 +48,7 @@ function init() {
   );
   startPolling(getCfg());
   tryInjectGear(getCfg, applySettings);
+  maybeShowReconnectBanner(getCfg().mcpPort ?? 4299);
 }
 
 if (document.readyState === 'loading') {

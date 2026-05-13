@@ -1374,50 +1374,6 @@
     document.body.appendChild(overlay);
   }
 
-  // src/userscript/lifecycle.js
-  var MASK_CLASS2 = "__claude-pace-mask";
-  var LOG3 = (...args) => console.log("[claude-pace]", ...args);
-  function installLifecycle(onRerender, onResumePolling, onStopPolling) {
-    setInterval(onRerender, 30000);
-    const wrapHistory = (key) => {
-      const orig = history[key];
-      history[key] = function() {
-        const r = orig.apply(this, arguments);
-        handleNavigation();
-        return r;
-      };
-    };
-    wrapHistory("pushState");
-    wrapHistory("replaceState");
-    window.addEventListener("popstate", handleNavigation);
-    function handleNavigation() {
-      const onUsagePage = /\/settings\/usage(\b|\/)/.test(location.pathname);
-      if (!onUsagePage) {
-        LOG3("navigated away from /settings/usage — teardown");
-        teardownAll();
-        onStopPolling();
-      } else {
-        LOG3("navigated onto /settings/usage");
-        onResumePolling();
-        onRerender();
-      }
-    }
-    function teardownAll() {
-      const gear = document.getElementById(GEAR_ID);
-      if (gear)
-        gear.remove();
-      document.querySelectorAll("." + MARKER_CLASS + ", ." + PILL_CLASS + ", ." + MASK_CLASS2 + ", ." + SUMMARY_CLASS + ", ." + DAY_DIV_CLASS).forEach((n) => n.remove());
-      document.querySelectorAll('[role="progressbar"]').forEach((bar) => {
-        bar.style.background = "";
-        bar.style.border = "";
-        bar.style.position = "";
-        const fill = bar.querySelector("div");
-        if (fill)
-          fill.style.background = "";
-      });
-    }
-  }
-
   // src/userscript/ui/components/reconnect-banner.js
   var BANNER_ID = "__claude-pace-reconnect-banner";
   async function fetchMcpStatus2(port) {
@@ -1445,6 +1401,9 @@
       if (res.ok)
         banner.remove();
     } catch {}
+  }
+  function removeBanner() {
+    document.getElementById(BANNER_ID)?.remove();
   }
   async function maybeShowReconnectBanner(port = 4299) {
     if (document.getElementById(BANNER_ID))
@@ -1492,6 +1451,51 @@
     close.onclick = () => banner.remove();
     banner.appendChild(close);
     document.body.appendChild(banner);
+  }
+
+  // src/userscript/lifecycle.js
+  var MASK_CLASS2 = "__claude-pace-mask";
+  var LOG3 = (...args) => console.log("[claude-pace]", ...args);
+  function installLifecycle(onRerender, onResumePolling, onStopPolling) {
+    setInterval(onRerender, 30000);
+    const wrapHistory = (key) => {
+      const orig = history[key];
+      history[key] = function() {
+        const r = orig.apply(this, arguments);
+        handleNavigation();
+        return r;
+      };
+    };
+    wrapHistory("pushState");
+    wrapHistory("replaceState");
+    window.addEventListener("popstate", handleNavigation);
+    function handleNavigation() {
+      const onUsagePage = /\/settings\/usage(\b|\/)/.test(location.pathname);
+      if (!onUsagePage) {
+        LOG3("navigated away from /settings/usage — teardown");
+        teardownAll();
+        onStopPolling();
+      } else {
+        LOG3("navigated onto /settings/usage");
+        onResumePolling();
+        onRerender();
+      }
+    }
+    function teardownAll() {
+      const gear = document.getElementById(GEAR_ID);
+      if (gear)
+        gear.remove();
+      removeBanner();
+      document.querySelectorAll("." + MARKER_CLASS + ", ." + PILL_CLASS + ", ." + MASK_CLASS2 + ", ." + SUMMARY_CLASS + ", ." + DAY_DIV_CLASS).forEach((n) => n.remove());
+      document.querySelectorAll('[role="progressbar"]').forEach((bar) => {
+        bar.style.background = "";
+        bar.style.border = "";
+        bar.style.position = "";
+        const fill = bar.querySelector("div");
+        if (fill)
+          fill.style.background = "";
+      });
+    }
   }
 
   // src/userscript/main.js

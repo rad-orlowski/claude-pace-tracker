@@ -79,7 +79,7 @@ export class Poller {
       credentialsStatus: 'valid',
       situation:         key,
       message,
-      weekly:  { deltaPp: signals.allWeekly.dp, utilizationPct: allB.utilization, elapsedPct: signals.allWeekly.dp + (allB.utilization - signals.allWeekly.dp) },
+      weekly:  { deltaPp: signals.allWeekly.dp, utilizationPct: allB.utilization, elapsedPct: allB.utilization - signals.allWeekly.dp },
       session: { deltaPp: signals.session.dp,   utilizationPct: sessB.utilization },
     };
     await this.store.saveStats(stats);

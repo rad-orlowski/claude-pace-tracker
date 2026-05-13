@@ -1,5 +1,6 @@
 import { CFG_DEFAULTS } from '../../config.js';
 import { ensureLucide, makeLucideIcon, renderLucideIcons, isLucideReady } from '../lucide.js';
+import { renderMcpSection } from './mcp-connect.js';
 
 export const GEAR_ID  = '__claude-pace-gear';
 export const PANEL_ID = '__claude-pace-panel';
@@ -191,6 +192,8 @@ export function openSettingsPanel(cfg, applySettings) {
   const s3 = addSection('Polling');
   addRow(s3, 'pollIntervalMin', 'Check interval',     cfg.pollIntervalMin, 1, 120, 'min',
     'How often the script re-fetches usage data from Claude\'s API in the background. Lower = more up to date, higher = fewer requests.');
+
+  renderMcpSection(panel, () => cfg, applySettings);
 
   const sep = document.createElement('div');
   Object.assign(sep.style, { borderTop: '1px solid rgba(255,255,255,0.08)', margin: '16px 0 14px' });

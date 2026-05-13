@@ -28,6 +28,22 @@
     const m = document.cookie.match(/(?:^|;\s*)lastActiveOrg=([0-9a-f-]+)/);
     return m ? m[1] : null;
   }
+  function getCookieString() {
+    return new Promise((resolve) => {
+      if (typeof GM === "undefined" || typeof GM.cookie?.list !== "function") {
+        resolve(null);
+        return;
+      }
+      const timeout = setTimeout(() => resolve(null), 2000);
+      GM.cookie.list({ url: "https://claude.ai" }).then((cookies) => {
+        clearTimeout(timeout);
+        resolve(cookies.map((c) => `${c.name}=${c.value}`).join("; "));
+      }).catch(() => {
+        clearTimeout(timeout);
+        resolve(null);
+      });
+    });
+  }
   function installCapture(onUsage, onFirstCapture) {
     if (window.__claudeUsagePaceFetchPatched) {
       LOG("fetch already patched — skipping");
@@ -135,7 +151,8 @@
     sleepStartH: SLEEP_START_H,
     bandWeekly: 2,
     bandSession: 5,
-    pollIntervalMin: 10
+    pollIntervalMin: 10,
+    mcpPort: 4299
   };
   function loadCfg() {
     try {
@@ -958,6 +975,97 @@
     document.head.appendChild(s);
   }
 
+  // src/userscript/ui/components/mcp-connect.js
+  async function fetchMcpStatus(port) {
+    try {
+      const res = await fetch(`http://localhost:${port}/status`, { signal: AbortSignal.timeout(1500) });
+      if (!res.ok)
+        return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+  async function connect(port, statusEl, btnEl) {
+    btnEl.disabled = true;
+    statusEl.textContent = "Connecting…";
+    const orgId = getCapturedOrgId();
+    if (!orgId) {
+      statusEl.textContent = "⚠ Org ID not yet captured — reload the page and try again.";
+      btnEl.disabled = false;
+      return;
+    }
+    const cookie = await getCookieString();
+    if (!cookie) {
+      statusEl.textContent = "⚠ Could not read cookies. Ensure Tampermonkey is installed and @grant GM_cookie is active.";
+      btnEl.disabled = false;
+      return;
+    }
+    try {
+      const res = await fetch(`http://localhost:${port}/credentials`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId, cookie }),
+        signal: AbortSignal.timeout(3000)
+      });
+      if (res.ok) {
+        statusEl.textContent = "✓ Connected";
+        btnEl.textContent = "Reconnect";
+      } else {
+        statusEl.textContent = `⚠ Server error ${res.status}`;
+      }
+    } catch {
+      statusEl.textContent = "⚠ MCP server not reachable — is it running?";
+    }
+    btnEl.disabled = false;
+  }
+  function renderMcpSection(container, getCfg2, applySettings) {
+    const section = document.createElement("div");
+    Object.assign(section.style, { marginTop: "16px", borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "12px" });
+    const label = document.createElement("div");
+    label.textContent = "Claude Code integration";
+    Object.assign(label.style, { fontSize: "11px", fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "8px" });
+    section.appendChild(label);
+    const row = document.createElement("div");
+    Object.assign(row.style, { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" });
+    const statusEl = document.createElement("span");
+    Object.assign(statusEl.style, { fontSize: "12px", color: "rgba(255,255,255,0.55)", flex: "1" });
+    statusEl.textContent = "Checking…";
+    const btn = document.createElement("button");
+    btn.textContent = "Connect";
+    Object.assign(btn.style, {
+      fontSize: "11px",
+      padding: "3px 10px",
+      borderRadius: "4px",
+      cursor: "pointer",
+      background: "rgba(255,255,255,0.08)",
+      border: "1px solid rgba(255,255,255,0.15)",
+      color: "rgba(255,255,255,0.8)"
+    });
+    const cfg = getCfg2();
+    const port = cfg.mcpPort ?? 4299;
+    btn.onclick = () => connect(port, statusEl, btn);
+    row.appendChild(statusEl);
+    row.appendChild(btn);
+    section.appendChild(row);
+    container.appendChild(section);
+    fetchMcpStatus(port).then((status) => {
+      if (!status) {
+        statusEl.textContent = "MCP server not running";
+        return;
+      }
+      if (status.credentialsStatus === "expired") {
+        statusEl.textContent = "⚠ Credentials expired";
+        btn.textContent = "Reconnect";
+      } else if (status.credentialsStatus === "valid") {
+        statusEl.textContent = `✓ Connected · ${status.situation ?? "…"}`;
+        btn.textContent = "Reconnect";
+      } else {
+        statusEl.textContent = "Not connected";
+      }
+    });
+  }
+
   // src/userscript/ui/components/settings.js
   var GEAR_ID = "__claude-pace-gear";
   var PANEL_ID = "__claude-pace-panel";
@@ -1199,6 +1307,7 @@
     addRow(s2, "bandSession", "Session (5h)", cfg.bandSession, 0, 20, "%pp ±", "Same tolerance for the 5-hour session bucket, which resets more often and naturally varies more than the weekly view.");
     const s3 = addSection("Polling");
     addRow(s3, "pollIntervalMin", "Check interval", cfg.pollIntervalMin, 1, 120, "min", "How often the script re-fetches usage data from Claude's API in the background. Lower = more up to date, higher = fewer requests.");
+    renderMcpSection(panel, () => cfg, applySettings);
     const sep = document.createElement("div");
     Object.assign(sep.style, { borderTop: "1px solid rgba(255,255,255,0.08)", margin: "16px 0 14px" });
     panel.appendChild(sep);

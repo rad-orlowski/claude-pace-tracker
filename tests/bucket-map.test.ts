@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { BUCKET_MAP, PERIOD_LEN_MS, titleToKey, NEUTRAL_BAND_BY_KEY } from '../src/constants.js';
+import { BUCKET_MAP, PERIOD_LEN_MS, titleToKey, NEUTRAL_BAND_BY_KEY } from '../src/userscript/constants.js';
 
 test('BUCKET_MAP contains the documented JSON keys', () => {
   expect(BUCKET_MAP.five_hour).toEqual({ title: 'Current session', periodMs: 5 * 60 * 60 * 1000 });

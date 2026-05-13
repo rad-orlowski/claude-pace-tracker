@@ -15,7 +15,7 @@
 // ==/UserScript==
 
 (() => {
-  // src/capture.js
+  // src/userscript/capture.js
   var LOG = (...args) => console.log("[claude-pace]", ...args);
   var WARN = (...args) => console.warn("[claude-pace]", ...args);
   var USAGE_RE = /\/api\/organizations\/([0-9a-f-]+)\/usage(\?|$)/;
@@ -63,7 +63,7 @@
     };
   }
 
-  // src/polling.js
+  // src/userscript/polling.js
   var LOG2 = (...args) => console.log("[claude-pace]", ...args);
   var WARN2 = (...args) => console.warn("[claude-pace]", ...args);
   var pollTimer = null;
@@ -110,7 +110,13 @@
     });
   }
 
-  // src/constants.js
+  // src/common/constants.ts
+  var ACTIVE_START_H = 7;
+  var ACTIVE_END_H = 20;
+  var SLEEP_START_H = 23;
+  var NEUTRAL_BAND_PP = 5;
+
+  // src/userscript/constants.js
   var BUCKET_MAP = {
     five_hour: { title: "Current session", periodMs: 5 * 60 * 60 * 1000 },
     seven_day: { title: "All models", periodMs: 7 * 24 * 60 * 60 * 1000 },
@@ -119,12 +125,8 @@
   };
   var PERIOD_LEN_MS = Object.fromEntries(Object.entries(BUCKET_MAP).map(([k, v]) => [k, v.periodMs]));
   var TITLE_TO_KEY = Object.fromEntries(Object.entries(BUCKET_MAP).map(([k, v]) => [v.title, k]));
-  var NEUTRAL_BAND_PP = 5;
-  var ACTIVE_START_H = 7;
-  var ACTIVE_END_H = 20;
-  var SLEEP_START_H = 23;
 
-  // src/config.js
+  // src/userscript/config.js
   var CFG_KEY = "__claude_pace_cfg";
   var CFG_DEFAULTS = {
     activeStartH: ACTIVE_START_H,
@@ -159,7 +161,7 @@
     _cfg = c;
   }
 
-  // src/math.js
+  // src/common/math.ts
   function timeWindowOf(date, activeStartH = ACTIVE_START_H, activeEndH = ACTIVE_END_H, sleepStartH = SLEEP_START_H) {
     const h = date.getHours() + date.getMinutes() / 60;
     if (h >= activeStartH && h < activeEndH)
@@ -230,8 +232,7 @@
     const n = Math.round(dp);
     return (n > 0 ? "+" : "") + n + "%";
   }
-
-  // src/signals.js
+  // src/common/signals.ts
   var SITUATION_MESSAGES = {
     CRITICAL_LIMIT: (p) => `${p.model} weekly limit at ${p.pct}% — nearly exhausted. Minimise token use.`,
     RESET_TIGHT: (p) => `Reset in ${p.resetInH}h with ${p.pct}% used. Tight — wrap up heavy tasks or wait for the reset.`,
@@ -388,8 +389,7 @@
       return { key: "SONNET_LIGHT", params: { sonWDp: Math.round(Math.abs(sonnetWeekly.dp)) } };
     return { key: "ALL_CLEAR", params: {} };
   }
-
-  // src/ui/components/bar.js
+  // src/userscript/ui/components/bar.js
   var BAR_COLORS = {
     active: "#5c7dd6",
     activeAlt: "#4a6bbf",
@@ -464,7 +464,7 @@
     mask.style.borderRadius = usedPct <= 1 ? "4px" : "0 4px 4px 0";
   }
 
-  // src/ui/lucide.js
+  // src/userscript/ui/lucide.js
   var lucideReady = false;
   var lucideLoadPromise = null;
   function isLucideReady() {
@@ -511,7 +511,7 @@
     }
   }
 
-  // src/ui/components/now-marker.js
+  // src/userscript/ui/components/now-marker.js
   var MARKER_CLASS = "__claude-pace-marker";
   function ensureMarker(host) {
     if (getComputedStyle(host).position === "static")
@@ -577,7 +577,7 @@
     return marker;
   }
 
-  // src/ui/components/day-dividers.js
+  // src/userscript/ui/components/day-dividers.js
   var DAY_DIV_CLASS = "__claude-pace-day-div";
   function ensureDayDividers(host, days) {
     host.querySelectorAll("." + DAY_DIV_CLASS).forEach((n) => n.remove());
@@ -599,7 +599,7 @@
     }
   }
 
-  // src/ui/components/pill.js
+  // src/userscript/ui/components/pill.js
   var PILL_CLASS = "__claude-pace-pill";
   var SUPPRESS_PILL_BEFORE_MS = 5 * 60 * 1000;
   var PILL_OVER = { color: "#ff7a7a", background: "rgba(255,90,90,0.15)", border: "1px solid rgba(255,90,90,0.35)" };
@@ -642,7 +642,7 @@
     return pill;
   }
 
-  // src/ui/components/summary-card.js
+  // src/userscript/ui/components/summary-card.js
   var SUMMARY_CLASS = "__claude-pace-summary";
   var SUMMARY_CATEGORY_INFO = {
     CRITICAL_LIMIT: { colour: "#ff7a7a", icon: "alert-triangle", fallback: "⚠" },
@@ -739,7 +739,7 @@
     card.querySelector("." + SUMMARY_CLASS + "-text").textContent = msgFn(params);
   }
 
-  // src/ui/dom.js
+  // src/userscript/ui/dom.js
   var rowCache = new Map;
   var KNOWN_TITLES = new Set(Object.values(BUCKET_MAP).map((m) => m.title));
   function rebuildRowCache() {
@@ -785,7 +785,7 @@
     return rowCache.get(title) || null;
   }
 
-  // src/render.js
+  // src/userscript/render.js
   var renderRetryTimer = null;
   var RENDER_RETRY_MS = 100;
   var RENDER_RETRY_MAX = 30;
@@ -933,11 +933,11 @@
       if (renderMarkerAndPill(key, bucket.utilization, bucket.resets_at, cfg))
         renderedAny = true;
     }
-    const signals = buildSignals(json, Date.now(), cfg);
-    if (signals) {
+    const signals2 = buildSignals(json, Date.now(), cfg);
+    if (signals2) {
       const section = findUsageSection();
       if (section) {
-        const { key, params } = classifySituation(signals, cfg);
+        const { key, params } = classifySituation(signals2, cfg);
         renderSummaryPanel(section, key, params);
       }
     }
@@ -947,7 +947,7 @@
     }
   }
 
-  // src/ui/styles.js
+  // src/userscript/ui/styles.js
   function injectPaceStyles() {
     if (document.getElementById("__claude-pace-styles"))
       return;
@@ -957,7 +957,7 @@
     document.head.appendChild(s);
   }
 
-  // src/ui/components/settings.js
+  // src/userscript/ui/components/settings.js
   var GEAR_ID = "__claude-pace-gear";
   var PANEL_ID = "__claude-pace-panel";
   var _gearRetryTimer = null;
@@ -1264,7 +1264,7 @@
     document.body.appendChild(overlay);
   }
 
-  // src/lifecycle.js
+  // src/userscript/lifecycle.js
   var MASK_CLASS2 = "__claude-pace-mask";
   var LOG3 = (...args) => console.log("[claude-pace]", ...args);
   function installLifecycle(onRerender, onResumePolling, onStopPolling) {
@@ -1308,7 +1308,7 @@
     }
   }
 
-  // src/main.js
+  // src/userscript/main.js
   var LOG4 = (...args) => console.log("[claude-pace]", ...args);
   var WARN3 = (...args) => console.warn("[claude-pace]", ...args);
   function onUsage(json) {

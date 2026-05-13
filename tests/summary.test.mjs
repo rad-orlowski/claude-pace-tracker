@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { buildSignals, classifySituation, SITUATION_MESSAGES } from '../src/signals.js';
+import { buildSignals, classifySituation, SITUATION_MESSAGES } from '../src/userscript/signals.js';
 
 const periodMs = 7 * 24 * 3600 * 1000;
 const sessMs   = 5 * 3600 * 1000;

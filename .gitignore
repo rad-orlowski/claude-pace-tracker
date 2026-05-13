@@ -4,6 +4,8 @@ CLAUDE.md
 .serena/
 
 node_modules/
+src/mcp/node_modules/
+src/mcp/dist/
 # docs/ contains large captured HTML source files used for reference during development
 docs/
 

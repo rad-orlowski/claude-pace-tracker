@@ -4,7 +4,7 @@ const header = readFileSync('./meta.txt', 'utf8').trimEnd();
 
 async function bundle(minify: boolean): Promise<string> {
   const result = await Bun.build({
-    entrypoints: ['./src/main.js'],
+    entrypoints: ['./src/userscript/main.js'],
     format: 'iife',
     target: 'browser',
     minify,

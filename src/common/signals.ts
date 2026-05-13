@@ -1,6 +1,29 @@
 import { timeWindowOf, activeElapsedPctOf, todayEndExpectedPctOf, deltaPpOf, severityOf, signedPp } from './math.js';
 
-export const SITUATION_MESSAGES = {
+export type Severity   = 'over' | 'under' | 'neutral';
+export type TimeWindow = 'active' | 'bonus' | 'sleep';
+
+export interface SignalsCfg {
+  activeStartH: number;
+  activeEndH:   number;
+  sleepStartH:  number;
+  bandWeekly:   number;
+  bandSession:  number;
+}
+
+export interface Signals {
+  session:       { dp: number; sev: Severity };
+  allWeekly:     { dp: number; sev: Severity; pct: number };
+  allDaily:      { dp: number; sev: Severity };
+  sonnetWeekly:  { dp: number; sev: Severity; pct: number };
+  sonnetDaily:   { dp: number; sev: Severity };
+  window:        TimeWindow;
+  resetInH:      number;
+  daysLeft:      number;
+  opusPct:       number | null;
+}
+
+export const SITUATION_MESSAGES: Record<string, (p: any) => string> = {
   CRITICAL_LIMIT:          (p) => `${p.model} weekly limit at ${p.pct}% — nearly exhausted. Minimise token use.`,
   RESET_TIGHT:             (p) => `Reset in ${p.resetInH}h with ${p.pct}% used. Tight — wrap up heavy tasks or wait for the reset.`,
   RESET_OPPORTUNITY:       (p) => `Reset in ${p.resetInH}h — ${p.pctLeft}% of quota unused. Good time to front-load heavy Sonnet work.`,
@@ -25,7 +48,7 @@ export const SITUATION_MESSAGES = {
   ALL_CLEAR:               ()  => `All pace indicators on track. Keep going.`,
 };
 
-export function buildSignals(json, now, cfg) {
+export function buildSignals(json: any, now: number, cfg: SignalsCfg): Signals | null {
   const allB    = json && json.seven_day;
   const sonB    = json && json.seven_day_sonnet;
   const sessB   = json && json.five_hour;
@@ -78,7 +101,7 @@ export function buildSignals(json, now, cfg) {
   };
 }
 
-export function classifySituation(signals, cfg) {
+export function classifySituation(signals: Signals, cfg: SignalsCfg & { activeEndH: number }): { key: string; params: Record<string, any> } {
   const { session, allWeekly, allDaily, sonnetWeekly, sonnetDaily, window: win, resetInH, daysLeft, opusPct } = signals;
 
   if (allWeekly.pct > 90)    return { key: 'CRITICAL_LIMIT', params: { model: 'All-models', pct: Math.round(allWeekly.pct) } };

@@ -21,6 +21,12 @@ The settings panel (gear icon next to the page heading):
 
 ![Pace indicator settings panel](./assets/settings.png)
 
+## Claude Code Integration
+
+An optional companion MCP server lets Claude Code query your pace statistics mid-session, show a status-line indicator, and print a situation summary at session start.
+
+→ [Full setup guide](src/mcp/README.md)
+
 ## Install
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/) (or Violentmonkey / Greasemonkey) in your browser.

@@ -12,6 +12,20 @@ export function getOrgIdFromCookie() {
   return m ? m[1] : null;
 }
 
+export function getCookieString() {
+  return new Promise((resolve) => {
+    if (typeof GM === 'undefined' || typeof GM.cookie?.list !== 'function') {
+      resolve(null);
+      return;
+    }
+    const timeout = setTimeout(() => resolve(null), 2000);
+    GM.cookie.list({ url: 'https://claude.ai' }).then((cookies) => {
+      clearTimeout(timeout);
+      resolve(cookies.map(c => `${c.name}=${c.value}`).join('; '));
+    }).catch(() => { clearTimeout(timeout); resolve(null); });
+  });
+}
+
 export function installCapture(onUsage, onFirstCapture) {
   if (window.__claudeUsagePaceFetchPatched) {
     LOG('fetch already patched — skipping');

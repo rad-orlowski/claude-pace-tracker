@@ -11,7 +11,8 @@
 // @license      GPL-3.0-or-later
 // @match        https://claude.ai/settings/usage*
 // @run-at       document-start
-// @grant        none
+// @grant        GM_xmlhttpRequest
+// @grant        GM_cookie
 // ==/UserScript==
 
 (() => {

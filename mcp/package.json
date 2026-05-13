@@ -1,0 +1,20 @@
+{
+  "name": "claude-pace-tracker-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "claude-pace-tracker-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "bun build src/index.ts --outfile dist/index.js --target node --sourcemap",
+    "dev": "bun src/index.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0"
+  }
+}

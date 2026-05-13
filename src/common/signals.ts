@@ -202,3 +202,8 @@ export function classifySituation(signals: Signals, cfg: SignalsCfg & { activeEn
 
   return { key: 'ALL_CLEAR', params: {} };
 }
+
+export function resolveSituation(signals: Signals, cfg: SignalsCfg): string {
+  const { key, params } = classifySituation(signals, cfg);
+  return SITUATION_MESSAGES[key]?.(params) ?? key;
+}

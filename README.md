@@ -23,7 +23,7 @@ The settings panel (gear icon next to the page heading):
 
 ## Claude Code Integration
 
-An optional companion MCP server lets Claude Code query your pace statistics mid-session, show a status-line indicator, and print a situation summary at session start.
+An optional companion MCP server lets Claude Code query your pace statistics mid-session. The userscript pushes pre-computed pace state to a local HTTP sidecar (`127.0.0.1:4299`) whenever `claude.ai/settings/usage` is open — no credentials are shared, and the overlay works normally even when the MCP server is not running.
 
 → [Full setup guide](src/mcp/README.md)
 
@@ -31,7 +31,7 @@ An optional companion MCP server lets Claude Code query your pace statistics mid
 
 ### Userscript
 
-1. Install [Tampermonkey](https://www.tampermonkey.net/) in your browser. (Violentmonkey / Greasemonkey work for the overlay, but the optional Claude Code connect feature requires Tampermonkey.)
+1. Install [Tampermonkey](https://www.tampermonkey.net/) (or Violentmonkey / Greasemonkey) in your browser.
 2. Click this link to install: **[claude-usage-pace.user.js](https://github.com/rad-orlowski/claude-pace-tracker/raw/main/dist/claude-usage-pace.user.js)**
 3. Tampermonkey opens an install screen — confirm.
 4. Open <https://claude.ai/settings/usage>. The pace overlay appears alongside the existing usage bars.
@@ -52,9 +52,7 @@ cd claude-pace-tracker/src/mcp
 bun install && bun run build
 ```
 
-Then add it to `~/.claude.json` — details in [src/mcp/README.md](src/mcp/README.md).
-
-> **First-time connection:** when you click Connect in the gear panel, Tampermonkey may show a one-time cross-origin permission prompt for `http://localhost:4299`. Allow it — the script needs to reach the local MCP sidecar. The `@connect localhost` header in the script grants this permission automatically on future loads.
+Then add it to `~/.claude/settings.json` — details in [src/mcp/README.md](src/mcp/README.md).
 
 ## Configuration
 

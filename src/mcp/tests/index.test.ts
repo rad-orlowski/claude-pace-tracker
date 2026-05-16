@@ -27,7 +27,6 @@ const sample: StatePayload = {
   raw: {
     seven_day:        { utilization: 40, resets_at: '2026-05-23T00:00:00.000Z' },
     seven_day_sonnet: { utilization: 35, resets_at: '2026-05-23T00:00:00.000Z' },
-    seven_day_opus:   { utilization: 10, resets_at: '2026-05-23T00:00:00.000Z' },
     five_hour:        { utilization: 20, resets_at: '2026-05-16T18:00:00.000Z' },
   },
   computed: {
@@ -37,7 +36,6 @@ const sample: StatePayload = {
     allDaily:     { deltaPp: 1, trend: 'on-track' },
     sonnetWeekly: { utilizationPct: 35, deltaPp: -1, elapsedPct: 36, trend: 'on-track' },
     sonnetDaily:  { deltaPp: 0, trend: 'on-track' },
-    opusPct: 10,
   },
   situation: { key: 'ALL_OVER', params: { allWDp: 4 }, message: 'All-models +4%.', trend: 'over' },
 };

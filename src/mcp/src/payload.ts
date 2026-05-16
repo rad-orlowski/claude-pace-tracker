@@ -26,7 +26,6 @@ export interface StatePayload {
   raw: {
     seven_day:        RawBucket;
     seven_day_sonnet: RawBucket;
-    seven_day_opus:   RawBucket;
     five_hour:        RawBucket;
   };
   computed: {
@@ -38,7 +37,6 @@ export interface StatePayload {
     allDaily:     ComputedDailyBucket;
     sonnetWeekly: ComputedBucket;
     sonnetDaily:  ComputedDailyBucket;
-    opusPct:      number | null;
   };
   situation: {
     key:     string;
@@ -62,7 +60,7 @@ export function isValidStatePayload(x: unknown): x is StatePayload {
   if (p.schemaVersion !== SCHEMA_VERSION) return false;
   if (typeof p.pushedAt !== 'string') return false;
   if (!p.raw || !isRawBucket(p.raw.seven_day) || !isRawBucket(p.raw.seven_day_sonnet)
-              || !isRawBucket(p.raw.seven_day_opus) || !isRawBucket(p.raw.five_hour)) return false;
+              || !isRawBucket(p.raw.five_hour)) return false;
   if (!p.computed) return false;
   if (!p.situation || typeof p.situation.message !== 'string' || !TRENDS.has(p.situation.trend as Trend)) return false;
   return true;

@@ -6,5 +6,4 @@ export const NEUTRAL_BAND_BY_KEY: Record<string, number> = {
   five_hour:        5,
   seven_day:        2,
   seven_day_sonnet: 2,
-  seven_day_opus:   2,
 };

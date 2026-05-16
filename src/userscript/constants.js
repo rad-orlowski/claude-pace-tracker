@@ -4,7 +4,6 @@ export const BUCKET_MAP = {
   five_hour:           { title: 'Current session', periodMs: 5 * 60 * 60 * 1000 },
   seven_day:           { title: 'All models',      periodMs: 7 * 24 * 60 * 60 * 1000 },
   seven_day_sonnet:    { title: 'Sonnet only',     periodMs: 7 * 24 * 60 * 60 * 1000 },
-  seven_day_opus:      { title: 'Opus only',       periodMs: 7 * 24 * 60 * 60 * 1000 },
 };
 
 export const PERIOD_LEN_MS = Object.fromEntries(

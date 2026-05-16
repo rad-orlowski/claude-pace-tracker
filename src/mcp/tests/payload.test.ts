@@ -7,7 +7,6 @@ const fixture: StatePayload = {
   raw: {
     seven_day:        { utilization: 41.2, resets_at: '2026-05-23T00:00:00.000Z' },
     seven_day_sonnet: { utilization: 38.7, resets_at: '2026-05-23T00:00:00.000Z' },
-    seven_day_opus:   { utilization: 12.1, resets_at: '2026-05-23T00:00:00.000Z' },
     five_hour:        { utilization: 23.4, resets_at: '2026-05-16T18:00:00.000Z' },
   },
   computed: {
@@ -19,7 +18,6 @@ const fixture: StatePayload = {
     allDaily:     { deltaPp: 1.2,  trend: 'on-track' },
     sonnetWeekly: { utilizationPct: 38.7, deltaPp:  2.0, elapsedPct: 36.4, trend: 'on-track' },
     sonnetDaily:  { deltaPp: -0.5, trend: 'on-track' },
-    opusPct: 12.1,
   },
   situation: {
     key: 'ALL_OVER',

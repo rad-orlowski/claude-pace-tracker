@@ -20,7 +20,6 @@ export interface Signals {
   window:        TimeWindow;
   resetInH:      number;
   daysLeft:      number;
-  opusPct:       number | null;
 }
 
 export const SITUATION_MESSAGES: Record<string, (p: any) => string> = {
@@ -34,9 +33,7 @@ export const SITUATION_MESSAGES: Record<string, (p: any) => string> = {
   WEEKLY_OVER_CORRECTING:  (p) => `Weekly ${p.model} is +${p.wDp}% ahead but today is light — naturally self-correcting. Keep this daily pace.`,
   ALL_OVER_SONNET_UNDER:   (p) => `Overall usage is high (+${p.allWDp}%) but Sonnet is underused. Prefer Sonnet for remaining work to get more value from it.`,
   ALL_OVER:                (p) => `All-models weekly is +${p.allWDp}% ahead. Sonnet quota is fine — shift to Sonnet-heavy tasks to slow the overall burn.`,
-  SONNET_OVER:             (p) => p.opusAhead
-    ? `Sonnet weekly is +${p.sonWDp}% ahead. Opus is also running hot — switch to Haiku for lightweight tasks.`
-    : `Sonnet weekly is +${p.sonWDp}% ahead. Switch to Opus or Haiku to preserve Sonnet quota.`,
+  SONNET_OVER:             (p) => `Sonnet weekly is +${p.sonWDp}% ahead. Switch to Opus or Haiku to preserve Sonnet quota.`,
   SESSION_HOT_WEEKLY_SLACK:(p) => `Hot session (+${p.sessDp}%) but weekly is conserved (${p.allWDp}% under). Budget available — keep the pace.`,
   SESSION_HOT_DAILY_SLOW:  (p) => `This session is hot (+${p.sessDp}%) but today's overall is still under target — slow start, active now. No concern yet.`,
   SESSION_HOT:             (p) => `Session is running hot (+${p.sessDp}%). Weekly budget is healthy — but watch if this pace continues.`,
@@ -85,9 +82,6 @@ export function buildSignals(json: any, now: number, cfg: SignalsCfg): Signals |
 
   const win = timeWindowOf(new Date(now), cfg.activeStartH, cfg.activeEndH, cfg.sleepStartH);
 
-  const opusB   = json && json.seven_day_opus;
-  const opusPct = (opusB && opusB.utilization != null) ? opusB.utilization : null;
-
   return {
     session:      { dp: sessDp,  sev: severityOf(sessDp,  bS) },
     allWeekly:    { dp: allWDp,  sev: severityOf(allWDp,  bW), pct: allB.utilization },
@@ -97,12 +91,11 @@ export function buildSignals(json: any, now: number, cfg: SignalsCfg): Signals |
     window: win,
     resetInH,
     daysLeft,
-    opusPct,
   };
 }
 
 export function classifySituation(signals: Signals, cfg: SignalsCfg & { activeEndH: number }): { key: string; params: Record<string, any> } {
-  const { session, allWeekly, allDaily, sonnetWeekly, sonnetDaily, window: win, resetInH, daysLeft, opusPct } = signals;
+  const { session, allWeekly, allDaily, sonnetWeekly, sonnetDaily, window: win, resetInH, daysLeft } = signals;
 
   if (allWeekly.pct > 90)    return { key: 'CRITICAL_LIMIT', params: { model: 'All-models', pct: Math.round(allWeekly.pct) } };
   if (sonnetWeekly.pct > 90) return { key: 'CRITICAL_LIMIT', params: { model: 'Sonnet',     pct: Math.round(sonnetWeekly.pct) } };
@@ -138,7 +131,7 @@ export function classifySituation(signals: Signals, cfg: SignalsCfg & { activeEn
     if (allWeekly.sev === 'over')
       return { key: 'ALL_OVER', params: { allWDp: Math.round(allWeekly.dp) } };
     if (sonnetWeekly.sev === 'over')
-      return { key: 'SONNET_OVER', params: { sonWDp: Math.round(sonnetWeekly.dp), opusAhead: opusPct != null && opusPct > sonnetWeekly.pct } };
+      return { key: 'SONNET_OVER', params: { sonWDp: Math.round(sonnetWeekly.dp) } };
     return { key: 'BONUS_OK', params: { allWDp: signedPp(allWeekly.dp) } };
   }
 
@@ -160,7 +153,7 @@ export function classifySituation(signals: Signals, cfg: SignalsCfg & { activeEn
     return { key: 'ALL_OVER', params: { allWDp: Math.round(allWeekly.dp) } };
 
   if (sonnetWeekly.sev === 'over')
-    return { key: 'SONNET_OVER', params: { sonWDp: Math.round(sonnetWeekly.dp), opusAhead: opusPct != null && opusPct > sonnetWeekly.pct } };
+    return { key: 'SONNET_OVER', params: { sonWDp: Math.round(sonnetWeekly.dp) } };
 
   if (session.sev === 'over' && allWeekly.sev === 'under' && sonnetWeekly.sev === 'under')
     return { key: 'SESSION_HOT_WEEKLY_SLACK', params: {

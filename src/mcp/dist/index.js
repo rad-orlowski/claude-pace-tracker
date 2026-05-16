@@ -20307,7 +20307,7 @@ function isValidStatePayload(x) {
     return false;
   if (typeof p.pushedAt !== "string")
     return false;
-  if (!p.raw || !isRawBucket(p.raw.seven_day) || !isRawBucket(p.raw.seven_day_sonnet) || !isRawBucket(p.raw.seven_day_opus) || !isRawBucket(p.raw.five_hour))
+  if (!p.raw || !isRawBucket(p.raw.seven_day) || !isRawBucket(p.raw.seven_day_sonnet) || !isRawBucket(p.raw.five_hour))
     return false;
   if (!p.computed)
     return false;
@@ -20487,5 +20487,5 @@ export {
   freshnessNow
 };
 
-//# debugId=AF8E32816E98D76764756E2164756E21
+//# debugId=0711CD16849AE97D64756E2164756E21
 //# sourceMappingURL=index.js.map

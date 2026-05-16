@@ -9,7 +9,6 @@ function mkJson() {
   return {
     seven_day:        { utilization: 41, resets_at: future },
     seven_day_sonnet: { utilization: 38, resets_at: future },
-    seven_day_opus:   { utilization: 12, resets_at: future },
     five_hour:        { utilization: 20, resets_at: sess   },
   };
 }

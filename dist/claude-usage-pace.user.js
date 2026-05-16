@@ -122,8 +122,7 @@
   var BUCKET_MAP = {
     five_hour: { title: "Current session", periodMs: 5 * 60 * 60 * 1000 },
     seven_day: { title: "All models", periodMs: 7 * 24 * 60 * 60 * 1000 },
-    seven_day_sonnet: { title: "Sonnet only", periodMs: 7 * 24 * 60 * 60 * 1000 },
-    seven_day_opus: { title: "Opus only", periodMs: 7 * 24 * 60 * 60 * 1000 }
+    seven_day_sonnet: { title: "Sonnet only", periodMs: 7 * 24 * 60 * 60 * 1000 }
   };
   var PERIOD_LEN_MS = Object.fromEntries(Object.entries(BUCKET_MAP).map(([k, v]) => [k, v.periodMs]));
   var TITLE_TO_KEY = Object.fromEntries(Object.entries(BUCKET_MAP).map(([k, v]) => [v.title, k]));
@@ -248,7 +247,7 @@
     WEEKLY_OVER_CORRECTING: (p) => `Weekly ${p.model} is +${p.wDp}% ahead but today is light — naturally self-correcting. Keep this daily pace.`,
     ALL_OVER_SONNET_UNDER: (p) => `Overall usage is high (+${p.allWDp}%) but Sonnet is underused. Prefer Sonnet for remaining work to get more value from it.`,
     ALL_OVER: (p) => `All-models weekly is +${p.allWDp}% ahead. Sonnet quota is fine — shift to Sonnet-heavy tasks to slow the overall burn.`,
-    SONNET_OVER: (p) => p.opusAhead ? `Sonnet weekly is +${p.sonWDp}% ahead. Opus is also running hot — switch to Haiku for lightweight tasks.` : `Sonnet weekly is +${p.sonWDp}% ahead. Switch to Opus or Haiku to preserve Sonnet quota.`,
+    SONNET_OVER: (p) => `Sonnet weekly is +${p.sonWDp}% ahead. Switch to Opus or Haiku to preserve Sonnet quota.`,
     SESSION_HOT_WEEKLY_SLACK: (p) => `Hot session (+${p.sessDp}%) but weekly is conserved (${p.allWDp}% under). Budget available — keep the pace.`,
     SESSION_HOT_DAILY_SLOW: (p) => `This session is hot (+${p.sessDp}%) but today's overall is still under target — slow start, active now. No concern yet.`,
     SESSION_HOT: (p) => `Session is running hot (+${p.sessDp}%). Weekly budget is healthy — but watch if this pace continues.`,
@@ -292,8 +291,6 @@
     const resetInH = Math.max(0, resetInMs / 3600000);
     const daysLeft = Math.ceil(resetInMs / (24 * 3600000));
     const win = timeWindowOf(new Date(now), cfg.activeStartH, cfg.activeEndH, cfg.sleepStartH);
-    const opusB = json && json.seven_day_opus;
-    const opusPct = opusB && opusB.utilization != null ? opusB.utilization : null;
     return {
       session: { dp: sessDp, sev: severityOf(sessDp, bS) },
       allWeekly: { dp: allWDp, sev: severityOf(allWDp, bW), pct: allB.utilization },
@@ -302,12 +299,11 @@
       sonnetDaily: { dp: sonDDp, sev: severityOf(sonDDp, bW) },
       window: win,
       resetInH,
-      daysLeft,
-      opusPct
+      daysLeft
     };
   }
   function classifySituation(signals, cfg) {
-    const { session, allWeekly, allDaily, sonnetWeekly, sonnetDaily, window: win, resetInH, daysLeft, opusPct } = signals;
+    const { session, allWeekly, allDaily, sonnetWeekly, sonnetDaily, window: win, resetInH, daysLeft } = signals;
     if (allWeekly.pct > 90)
       return { key: "CRITICAL_LIMIT", params: { model: "All-models", pct: Math.round(allWeekly.pct) } };
     if (sonnetWeekly.pct > 90)
@@ -339,7 +335,7 @@
       if (allWeekly.sev === "over")
         return { key: "ALL_OVER", params: { allWDp: Math.round(allWeekly.dp) } };
       if (sonnetWeekly.sev === "over")
-        return { key: "SONNET_OVER", params: { sonWDp: Math.round(sonnetWeekly.dp), opusAhead: opusPct != null && opusPct > sonnetWeekly.pct } };
+        return { key: "SONNET_OVER", params: { sonWDp: Math.round(sonnetWeekly.dp) } };
       return { key: "BONUS_OK", params: { allWDp: signedPp(allWeekly.dp) } };
     }
     if (allWeekly.sev === "over" && sonnetWeekly.sev === "over")
@@ -356,7 +352,7 @@
     if (allWeekly.sev === "over")
       return { key: "ALL_OVER", params: { allWDp: Math.round(allWeekly.dp) } };
     if (sonnetWeekly.sev === "over")
-      return { key: "SONNET_OVER", params: { sonWDp: Math.round(sonnetWeekly.dp), opusAhead: opusPct != null && opusPct > sonnetWeekly.pct } };
+      return { key: "SONNET_OVER", params: { sonWDp: Math.round(sonnetWeekly.dp) } };
     if (session.sev === "over" && allWeekly.sev === "under" && sonnetWeekly.sev === "under")
       return { key: "SESSION_HOT_WEEKLY_SLACK", params: {
         sessDp: Math.round(session.dp),
@@ -1435,7 +1431,6 @@
       raw: {
         seven_day: { utilization: json.seven_day.utilization, resets_at: json.seven_day.resets_at },
         seven_day_sonnet: { utilization: json.seven_day_sonnet.utilization, resets_at: json.seven_day_sonnet.resets_at },
-        seven_day_opus: { utilization: json.seven_day_opus?.utilization ?? 0, resets_at: json.seven_day_opus?.resets_at ?? json.seven_day.resets_at },
         five_hour: { utilization: json.five_hour.utilization, resets_at: json.five_hour.resets_at }
       },
       computed: {
@@ -1446,8 +1441,7 @@
         allWeekly: { utilizationPct: signals2.allWeekly.pct, deltaPp: signals2.allWeekly.dp, elapsedPct: allWElapsed, trend: trendOf(signals2.allWeekly.sev, win, signals2.allWeekly.dp) },
         allDaily: { deltaPp: signals2.allDaily.dp, trend: trendOf(signals2.allDaily.sev, win, signals2.allDaily.dp) },
         sonnetWeekly: { utilizationPct: signals2.sonnetWeekly.pct, deltaPp: signals2.sonnetWeekly.dp, elapsedPct: sonWElapsed, trend: trendOf(signals2.sonnetWeekly.sev, win, signals2.sonnetWeekly.dp) },
-        sonnetDaily: { deltaPp: signals2.sonnetDaily.dp, trend: trendOf(signals2.sonnetDaily.sev, win, signals2.sonnetDaily.dp) },
-        opusPct: signals2.opusPct
+        sonnetDaily: { deltaPp: signals2.sonnetDaily.dp, trend: trendOf(signals2.sonnetDaily.sev, win, signals2.sonnetDaily.dp) }
       },
       situation: { key, params, message, trend: trendOf(signals2.allWeekly.sev, win, signals2.allWeekly.dp) }
     };

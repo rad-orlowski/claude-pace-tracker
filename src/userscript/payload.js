@@ -34,7 +34,6 @@ export function buildPushPayload(json, nowMs, cfg) {
     raw: {
       seven_day:        { utilization: json.seven_day.utilization,        resets_at: json.seven_day.resets_at },
       seven_day_sonnet: { utilization: json.seven_day_sonnet.utilization, resets_at: json.seven_day_sonnet.resets_at },
-      seven_day_opus:   { utilization: json.seven_day_opus?.utilization ?? 0, resets_at: json.seven_day_opus?.resets_at ?? json.seven_day.resets_at },
       five_hour:        { utilization: json.five_hour.utilization,        resets_at: json.five_hour.resets_at },
     },
     computed: {
@@ -46,7 +45,6 @@ export function buildPushPayload(json, nowMs, cfg) {
       allDaily:     { deltaPp: signals.allDaily.dp,    trend: trendOf(signals.allDaily.sev,    win, signals.allDaily.dp) },
       sonnetWeekly: { utilizationPct: signals.sonnetWeekly.pct,          deltaPp: signals.sonnetWeekly.dp, elapsedPct: sonWElapsed, trend: trendOf(signals.sonnetWeekly.sev, win, signals.sonnetWeekly.dp) },
       sonnetDaily:  { deltaPp: signals.sonnetDaily.dp, trend: trendOf(signals.sonnetDaily.sev, win, signals.sonnetDaily.dp) },
-      opusPct: signals.opusPct,
     },
     situation: { key, params, message, trend: trendOf(signals.allWeekly.sev, win, signals.allWeekly.dp) },
   };

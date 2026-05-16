@@ -14159,7 +14159,7 @@ function finalize(ctx, schema) {
     result.$schema = "http://json-schema.org/draft-07/schema#";
   } else if (ctx.target === "draft-04") {
     result.$schema = "http://json-schema.org/draft-04/schema#";
-  } else if (ctx.target === "openapi-3.0") {} else {}
+  } else if (ctx.target === "openapi-3.0") {}
   if (ctx.external?.uri) {
     const id = ctx.external.registry.get(schema)?.id;
     if (!id)
@@ -14403,7 +14403,7 @@ var literalProcessor = (schema, ctx, json, _params) => {
     if (val === undefined) {
       if (ctx.unrepresentable === "throw") {
         throw new Error("Literal `undefined` cannot be represented in JSON Schema");
-      } else {}
+      }
     } else if (typeof val === "bigint") {
       if (ctx.unrepresentable === "throw") {
         throw new Error("BigInt literals cannot be represented in JSON Schema");
@@ -20290,364 +20290,118 @@ class StdioServerTransport {
 
 // src/store.ts
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { join } from "node:path";
-async function readJson(path) {
+
+// src/payload.ts
+var SCHEMA_VERSION = 1;
+var TRENDS = new Set(["over", "under", "on-track", "sleep", "catch-up"]);
+function isRawBucket(x) {
+  return !!x && typeof x === "object" && typeof x.utilization === "number" && typeof x.resets_at === "string";
+}
+function isValidStatePayload(x) {
+  if (!x || typeof x !== "object")
+    return false;
+  const p = x;
+  if (p.schemaVersion !== SCHEMA_VERSION)
+    return false;
+  if (typeof p.pushedAt !== "string")
+    return false;
+  if (!p.raw || !isRawBucket(p.raw.seven_day) || !isRawBucket(p.raw.seven_day_sonnet) || !isRawBucket(p.raw.seven_day_opus) || !isRawBucket(p.raw.five_hour))
+    return false;
+  if (!p.computed)
+    return false;
+  if (!p.situation || typeof p.situation.message !== "string" || !TRENDS.has(p.situation.trend))
+    return false;
+  return true;
+}
+
+// src/store.ts
+async function readState(path) {
   try {
-    return JSON.parse(await readFile(path, "utf8"));
+    const raw = JSON.parse(await readFile(path, "utf8"));
+    return isValidStatePayload(raw) ? raw : null;
   } catch {
     return null;
   }
 }
-async function writeJson(path, data) {
+async function writeState(path, data) {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, JSON.stringify(data, null, 2), "utf8");
 }
-function makeStore(configPath, statsPath) {
+function makeStore(statePath) {
   return {
-    loadConfig: () => readJson(configPath),
-    saveConfig: (c) => writeJson(configPath, c),
-    loadStats: () => readJson(statsPath),
-    saveStats: (s) => writeJson(statsPath, s)
+    loadState: () => readState(statePath),
+    saveState: (s) => writeState(statePath, s)
   };
 }
 var home = homedir();
-var defaultStore = makeStore(join(home, ".config", "claude-pace-tracker", "config.json"), join(home, ".cache", "claude-pace-tracker", "stats.json"));
+var defaultStore = makeStore(join(home, ".cache", "claude-pace-tracker", "state.json"));
 
-// ../common/constants.ts
-var ACTIVE_START_H = 7;
-var ACTIVE_END_H = 20;
-var SLEEP_START_H = 23;
-var NEUTRAL_BAND_PP = 5;
-
-// ../common/math.ts
-function timeWindowOf(date4, activeStartH = ACTIVE_START_H, activeEndH = ACTIVE_END_H, sleepStartH = SLEEP_START_H) {
-  const h = date4.getHours() + date4.getMinutes() / 60;
-  if (h >= activeStartH && h < activeEndH)
-    return "active";
-  if (h >= activeEndH && h < sleepStartH)
-    return "bonus";
-  return "sleep";
-}
-function activeHoursBetween(startMs, endMs, activeStartH = ACTIVE_START_H, activeEndH = ACTIVE_END_H) {
-  if (endMs <= startMs)
-    return 0;
-  let total = 0;
-  const d = new Date(startMs);
-  d.setHours(0, 0, 0, 0);
-  while (d.getTime() < endMs) {
-    const lo = Math.max(d.getTime() + activeStartH * 3600000, startMs);
-    const hi = Math.min(d.getTime() + activeEndH * 3600000, endMs);
-    if (hi > lo)
-      total += hi - lo;
-    d.setDate(d.getDate() + 1);
+// src/freshness.ts
+function classifyFreshness(input) {
+  const liveAgeSec = input.lastSeenAt ? Math.floor((input.now.getTime() - input.lastSeenAt.getTime()) / 1000) : null;
+  if (!input.lastStateAt) {
+    return { freshness: "no-data", dataAgeMin: null, liveAgeSec };
   }
-  return total;
-}
-function activeElapsedPctOf(nowMs, resetsAt, periodMs, activeStartH = ACTIVE_START_H, activeEndH = ACTIVE_END_H) {
-  const periodStart = resetsAt - periodMs;
-  if (nowMs <= periodStart)
-    return 0;
-  const clampedNow = Math.min(nowMs, resetsAt);
-  const totalActive = activeHoursBetween(periodStart, resetsAt, activeStartH, activeEndH);
-  if (totalActive <= 0)
-    return 0;
-  const elapsed = activeHoursBetween(periodStart, clampedNow, activeStartH, activeEndH);
-  return elapsed / totalActive * 100;
-}
-function todayEndExpectedPctOf(nowMs, resetsAtMs, periodMs, activeEndH = ACTIVE_END_H) {
-  const eod = new Date(nowMs);
-  eod.setHours(activeEndH, 0, 0, 0);
-  const targetMs = Math.min(eod.getTime(), resetsAtMs);
-  return activeElapsedPctOf(targetMs, resetsAtMs, periodMs);
-}
-function deltaPpOf(usedPct, elapsedPct) {
-  return usedPct - elapsedPct;
-}
-function severityOf(deltaPp, neutralBand = NEUTRAL_BAND_PP) {
-  if (deltaPp > neutralBand)
-    return "over";
-  if (deltaPp < -neutralBand)
-    return "under";
-  return "neutral";
-}
-function signedPp(dp) {
-  const n = Math.round(dp);
-  return (n > 0 ? "+" : "") + n + "%";
+  const dataAgeMin = Math.floor((input.now.getTime() - input.lastStateAt.getTime()) / 60000);
+  let freshness;
+  if (dataAgeMin >= input.errorAfterMin)
+    freshness = "stale-error";
+  else if (dataAgeMin >= input.warnAfterMin)
+    freshness = "stale-warning";
+  else
+    freshness = "fresh";
+  return { freshness, dataAgeMin, liveAgeSec };
 }
 
-// ../common/signals.ts
-var SITUATION_MESSAGES = {
-  CRITICAL_LIMIT: (p) => `${p.model} weekly limit at ${p.pct}% — nearly exhausted. Minimise token use.`,
-  RESET_TIGHT: (p) => `Reset in ${p.resetInH}h with ${p.pct}% used. Tight — wrap up heavy tasks or wait for the reset.`,
-  RESET_OPPORTUNITY: (p) => `Reset in ${p.resetInH}h — ${p.pctLeft}% of quota unused. Good time to front-load heavy Sonnet work.`,
-  SLEEP: (p) => `Resting. End-of-day: all-models ${p.allWDp}, Sonnet ${p.sonWDp}.`,
-  BONUS_CATCH_UP: (p) => `Past active hours but ${p.dayDp}% short of today's target. Bonus window — close the gap if you can.`,
-  BONUS_OK: (p) => `Daily target hit. Weekly at ${p.allWDp} — you're on track. Keep coding if you have work, or stop for the day.`,
-  BOTH_WEEKLY_OVER: (p) => `Both weekly limits running hot — all-models +${p.allWDp}%, Sonnet +${p.sonWDp}%. Ease off to preserve quota.`,
-  WEEKLY_OVER_CORRECTING: (p) => `Weekly ${p.model} is +${p.wDp}% ahead but today is light — naturally self-correcting. Keep this daily pace.`,
-  ALL_OVER_SONNET_UNDER: (p) => `Overall usage is high (+${p.allWDp}%) but Sonnet is underused. Prefer Sonnet for remaining work to get more value from it.`,
-  ALL_OVER: (p) => `All-models weekly is +${p.allWDp}% ahead. Sonnet quota is fine — shift to Sonnet-heavy tasks to slow the overall burn.`,
-  SONNET_OVER: (p) => p.opusAhead ? `Sonnet weekly is +${p.sonWDp}% ahead. Opus is also running hot — switch to Haiku for lightweight tasks.` : `Sonnet weekly is +${p.sonWDp}% ahead. Switch to Opus or Haiku to preserve Sonnet quota.`,
-  SESSION_HOT_WEEKLY_SLACK: (p) => `Hot session (+${p.sessDp}%) but weekly is conserved (${p.allWDp}% under). Budget available — keep the pace.`,
-  SESSION_HOT_DAILY_SLOW: (p) => `This session is hot (+${p.sessDp}%) but today's overall is still under target — slow start, active now. No concern yet.`,
-  SESSION_HOT: (p) => `Session is running hot (+${p.sessDp}%). Weekly budget is healthy — but watch if this pace continues.`,
-  WEEKLY_UNDER_RECOVERING: (p) => `Behind on the week (${p.wDp}% under) but today is accelerating. Sustain this daily pace for ${p.daysLeft}d to catch up.`,
-  BOTH_WEEKLY_UNDER: (p) => `Weekly usage is light — all-models ${p.allWDp}% under, Sonnet ${p.sonWDp}% under. Good time for heavy tasks.`,
-  DAILY_BEHIND: (p) => `Behind today's target by ${p.dayDp}%. Push before ${p.activeEndH}:00 to stay on the weekly curve.`,
-  DAILY_OK_WEEKLY_LAGGING: (p) => `Today looks fine but the week is light (${p.allWDp}% under). Sustain this daily pace to stay on track.`,
-  SONNET_LIGHT: (p) => `Sonnet weekly is light (${p.sonWDp}% under). Prefer Sonnet for quality-critical tasks — you have the headroom.`,
-  ALL_CLEAR: () => `All pace indicators on track. Keep going.`
-};
-function buildSignals(json, now, cfg) {
-  const allB = json && json.seven_day;
-  const sonB = json && json.seven_day_sonnet;
-  const sessB = json && json.five_hour;
-  if (!allB || allB.utilization == null || !allB.resets_at)
-    return null;
-  if (!sonB || sonB.utilization == null || !sonB.resets_at)
-    return null;
-  if (!sessB || sessB.utilization == null || !sessB.resets_at)
-    return null;
-  const wMs = 7 * 24 * 60 * 60 * 1000;
-  const sMs = 5 * 60 * 60 * 1000;
-  const allRA = Date.parse(allB.resets_at);
-  const sonRA = Date.parse(sonB.resets_at);
-  const sessRA = Date.parse(sessB.resets_at);
-  if (!Number.isFinite(allRA) || !Number.isFinite(sonRA) || !Number.isFinite(sessRA))
-    return null;
-  const bW = cfg.bandWeekly;
-  const bS = cfg.bandSession;
-  const allWElapsed = activeElapsedPctOf(now, allRA, wMs, cfg.activeStartH, cfg.activeEndH);
-  const sonWElapsed = activeElapsedPctOf(now, sonRA, wMs, cfg.activeStartH, cfg.activeEndH);
-  const sessElapsed = activeElapsedPctOf(now, sessRA, sMs, cfg.activeStartH, cfg.activeEndH);
-  const allWDp = deltaPpOf(allB.utilization, allWElapsed);
-  const sonWDp = deltaPpOf(sonB.utilization, sonWElapsed);
-  const sessDp = deltaPpOf(sessB.utilization, sessElapsed);
-  const allTodayExp = todayEndExpectedPctOf(now, allRA, wMs, cfg.activeEndH);
-  const sonTodayExp = todayEndExpectedPctOf(now, sonRA, wMs, cfg.activeEndH);
-  const allDDp = deltaPpOf(allB.utilization, allTodayExp);
-  const sonDDp = deltaPpOf(sonB.utilization, sonTodayExp);
-  const resetInMs = Math.min(allRA, sonRA) - now;
-  const resetInH = Math.max(0, resetInMs / 3600000);
-  const daysLeft = Math.ceil(resetInMs / (24 * 3600000));
-  const win = timeWindowOf(new Date(now), cfg.activeStartH, cfg.activeEndH, cfg.sleepStartH);
-  const opusB = json && json.seven_day_opus;
-  const opusPct = opusB && opusB.utilization != null ? opusB.utilization : null;
-  return {
-    session: { dp: sessDp, sev: severityOf(sessDp, bS) },
-    allWeekly: { dp: allWDp, sev: severityOf(allWDp, bW), pct: allB.utilization },
-    allDaily: { dp: allDDp, sev: severityOf(allDDp, bW) },
-    sonnetWeekly: { dp: sonWDp, sev: severityOf(sonWDp, bW), pct: sonB.utilization },
-    sonnetDaily: { dp: sonDDp, sev: severityOf(sonDDp, bW) },
-    window: win,
-    resetInH,
-    daysLeft,
-    opusPct
-  };
-}
-function classifySituation(signals, cfg) {
-  const { session, allWeekly, allDaily, sonnetWeekly, sonnetDaily, window: win, resetInH, daysLeft, opusPct } = signals;
-  if (allWeekly.pct > 90)
-    return { key: "CRITICAL_LIMIT", params: { model: "All-models", pct: Math.round(allWeekly.pct) } };
-  if (sonnetWeekly.pct > 90)
-    return { key: "CRITICAL_LIMIT", params: { model: "Sonnet", pct: Math.round(sonnetWeekly.pct) } };
-  if (resetInH < 4 && (allWeekly.pct > 75 || sonnetWeekly.pct > 75))
-    return { key: "RESET_TIGHT", params: {
-      resetInH: resetInH.toFixed(1),
-      pct: Math.round(Math.max(allWeekly.pct, sonnetWeekly.pct))
-    } };
-  if (resetInH < 4 && allWeekly.pct < 40 && sonnetWeekly.pct < 40)
-    return { key: "RESET_OPPORTUNITY", params: {
-      resetInH: resetInH.toFixed(1),
-      pctLeft: Math.round(100 - allWeekly.pct)
-    } };
-  if (win === "sleep")
-    return { key: "SLEEP", params: {
-      allWDp: signedPp(allWeekly.dp),
-      sonWDp: signedPp(sonnetWeekly.dp)
-    } };
-  if (win === "bonus" && (allDaily.sev === "under" || sonnetDaily.sev === "under")) {
-    const dayDp = Math.round(Math.abs(Math.min(allDaily.dp, sonnetDaily.dp)));
-    return { key: "BONUS_CATCH_UP", params: { dayDp } };
-  }
-  if (win === "bonus") {
-    if (allWeekly.sev === "over" && sonnetWeekly.sev === "over")
-      return { key: "BOTH_WEEKLY_OVER", params: { allWDp: Math.round(allWeekly.dp), sonWDp: Math.round(sonnetWeekly.dp) } };
-    if (allWeekly.sev === "over" && sonnetWeekly.sev === "under")
-      return { key: "ALL_OVER_SONNET_UNDER", params: { allWDp: Math.round(allWeekly.dp) } };
-    if (allWeekly.sev === "over")
-      return { key: "ALL_OVER", params: { allWDp: Math.round(allWeekly.dp) } };
-    if (sonnetWeekly.sev === "over")
-      return { key: "SONNET_OVER", params: { sonWDp: Math.round(sonnetWeekly.dp), opusAhead: opusPct != null && opusPct > sonnetWeekly.pct } };
-    return { key: "BONUS_OK", params: { allWDp: signedPp(allWeekly.dp) } };
-  }
-  if (allWeekly.sev === "over" && sonnetWeekly.sev === "over")
-    return { key: "BOTH_WEEKLY_OVER", params: {
-      allWDp: Math.round(allWeekly.dp),
-      sonWDp: Math.round(sonnetWeekly.dp)
-    } };
-  if (allWeekly.sev === "over" && allDaily.sev === "under")
-    return { key: "WEEKLY_OVER_CORRECTING", params: { model: "all-models", wDp: Math.round(allWeekly.dp) } };
-  if (sonnetWeekly.sev === "over" && sonnetDaily.sev === "under")
-    return { key: "WEEKLY_OVER_CORRECTING", params: { model: "Sonnet", wDp: Math.round(sonnetWeekly.dp) } };
-  if (allWeekly.sev === "over" && sonnetWeekly.sev === "under")
-    return { key: "ALL_OVER_SONNET_UNDER", params: { allWDp: Math.round(allWeekly.dp) } };
-  if (allWeekly.sev === "over")
-    return { key: "ALL_OVER", params: { allWDp: Math.round(allWeekly.dp) } };
-  if (sonnetWeekly.sev === "over")
-    return { key: "SONNET_OVER", params: { sonWDp: Math.round(sonnetWeekly.dp), opusAhead: opusPct != null && opusPct > sonnetWeekly.pct } };
-  if (session.sev === "over" && allWeekly.sev === "under" && sonnetWeekly.sev === "under")
-    return { key: "SESSION_HOT_WEEKLY_SLACK", params: {
-      sessDp: Math.round(session.dp),
-      allWDp: Math.round(Math.abs(allWeekly.dp))
-    } };
-  if (session.sev === "over" && (allDaily.sev === "under" || sonnetDaily.sev === "under"))
-    return { key: "SESSION_HOT_DAILY_SLOW", params: { sessDp: Math.round(session.dp) } };
-  if (session.dp > cfg.bandSession * 2)
-    return { key: "SESSION_HOT", params: { sessDp: Math.round(session.dp) } };
-  if (allWeekly.sev === "under" && allDaily.sev === "over")
-    return { key: "WEEKLY_UNDER_RECOVERING", params: {
-      model: "all-models",
-      wDp: Math.round(Math.abs(allWeekly.dp)),
-      daysLeft
-    } };
-  if (sonnetWeekly.sev === "under" && sonnetDaily.sev === "over")
-    return { key: "WEEKLY_UNDER_RECOVERING", params: {
-      model: "Sonnet",
-      wDp: Math.round(Math.abs(sonnetWeekly.dp)),
-      daysLeft
-    } };
-  if (allWeekly.sev === "under" && sonnetWeekly.sev === "under")
-    return { key: "BOTH_WEEKLY_UNDER", params: {
-      allWDp: Math.round(Math.abs(allWeekly.dp)),
-      sonWDp: Math.round(Math.abs(sonnetWeekly.dp))
-    } };
-  if (allDaily.sev === "under" || sonnetDaily.sev === "under") {
-    const dayDp = Math.round(Math.abs(Math.min(allDaily.dp, sonnetDaily.dp)));
-    return { key: "DAILY_BEHIND", params: { dayDp, activeEndH: cfg.activeEndH } };
-  }
-  if (allWeekly.sev === "under")
-    return { key: "DAILY_OK_WEEKLY_LAGGING", params: { allWDp: Math.round(Math.abs(allWeekly.dp)) } };
-  if (sonnetWeekly.sev === "under")
-    return { key: "SONNET_LIGHT", params: { sonWDp: Math.round(Math.abs(sonnetWeekly.dp)) } };
-  return { key: "ALL_CLEAR", params: {} };
-}
-function resolveSituation(signals, cfg) {
-  const { key, params } = classifySituation(signals, cfg);
-  return SITUATION_MESSAGES[key]?.(params) ?? key;
-}
-// src/poller.ts
-class Poller {
-  store;
-  cfg;
-  fetchFn;
-  timer = null;
-  constructor(store, cfg, fetchFn = fetch) {
-    this.store = store;
-    this.cfg = cfg;
-    this.fetchFn = fetchFn;
-  }
-  start(intervalMin) {
-    if (this.timer)
-      return;
-    this.poll();
-    this.timer = setInterval(() => this.poll(), intervalMin * 60000);
-  }
-  stop() {
-    if (!this.timer)
-      return;
-    clearInterval(this.timer);
-    this.timer = null;
-  }
-  async poll() {
-    const config2 = await this.store.loadConfig();
-    if (!config2)
-      return;
-    let res;
-    try {
-      res = await this.fetchFn(`https://claude.ai/api/organizations/${config2.orgId}/usage`, { headers: { Cookie: config2.cookie, "content-type": "application/json", "anthropic-client-platform": "web_claude_ai" } });
-    } catch (err) {
-      console.error("[pace-mcp] fetch error:", err);
-      return;
-    }
-    if (res.status === 401) {
-      const existing = await this.store.loadStats();
-      await this.store.saveStats({
-        ...existing ?? { weekly: { deltaPp: 0, utilizationPct: 0, elapsedPct: 0 }, session: { deltaPp: 0, utilizationPct: 0 } },
-        updatedAt: new Date().toISOString(),
-        credentialsStatus: "expired",
-        situation: existing?.situation ?? null,
-        message: existing?.message ?? null
-      });
-      console.error("[pace-mcp] credentials expired (401)");
-      return;
-    }
-    if (!res.ok) {
-      console.error("[pace-mcp] non-OK response:", res.status);
-      return;
-    }
-    let json;
-    try {
-      json = await res.json();
-    } catch {
-      console.error("[pace-mcp] failed to parse JSON");
-      return;
-    }
-    const now = Date.now();
-    const signals = buildSignals(json, now, this.cfg);
-    if (!signals) {
-      console.error("[pace-mcp] buildSignals returned null");
-      return;
-    }
-    const { key } = classifySituation(signals, this.cfg);
-    const message = resolveSituation(signals, this.cfg);
-    const allB = json.seven_day;
-    const sessB = json.five_hour;
-    const stats = {
-      updatedAt: new Date().toISOString(),
-      credentialsStatus: "valid",
-      situation: key,
-      message,
-      weekly: { deltaPp: signals.allWeekly.dp, utilizationPct: allB.utilization, elapsedPct: signals.allWeekly.dp + (allB.utilization - signals.allWeekly.dp) },
-      session: { deltaPp: signals.session.dp, utilizationPct: sessB.utilization }
-    };
-    await this.store.saveStats(stats);
-    console.error("[pace-mcp] polled OK — situation:", key);
-  }
-}
+// src/freshness-config.ts
+var WARN_AFTER_MIN = Number(process.env.PACE_STALE_WARN_MIN ?? "30");
+var ERROR_AFTER_MIN = Number(process.env.PACE_STALE_ERROR_MIN ?? "120");
 
 // src/http.ts
-function startHttpSidecar(port, store, onConnect) {
+function startHttpSidecar(port, store, state) {
   return Bun.serve({
     port,
+    hostname: "127.0.0.1",
     async fetch(req) {
       const url = new URL(req.url);
-      if (req.method === "GET" && url.pathname === "/status") {
-        const stats = await store.loadStats();
-        const config2 = await store.loadConfig();
-        const credentialsStatus = stats?.credentialsStatus ?? (config2 ? "valid" : "missing");
-        return Response.json({
-          connected: true,
-          credentialsStatus,
-          lastPoll: stats?.updatedAt ?? null,
-          situation: stats?.situation ?? null
-        });
-      }
-      if (req.method === "POST" && url.pathname === "/credentials") {
+      if (req.method === "POST" && url.pathname === "/state") {
         let body;
         try {
           body = await req.json();
         } catch {
           return new Response("Invalid JSON", { status: 400 });
         }
-        if (typeof body?.orgId !== "string" || typeof body?.cookie !== "string") {
-          return new Response("Missing orgId or cookie", { status: 400 });
-        }
-        await store.saveConfig({ orgId: body.orgId, cookie: body.cookie });
-        await onConnect();
+        if (!isValidStatePayload(body))
+          return new Response("Invalid payload", { status: 400 });
+        state.lastState = body;
+        state.lastStateAt = new Date;
+        state.lastSeenAt = new Date;
+        await store.saveState(body);
         return Response.json({ ok: true });
+      }
+      if (req.method === "POST" && url.pathname === "/heartbeat") {
+        state.lastSeenAt = new Date;
+        return Response.json({ ok: true });
+      }
+      if (req.method === "GET" && url.pathname === "/status") {
+        const f = classifyFreshness({
+          now: new Date,
+          lastStateAt: state.lastStateAt,
+          lastSeenAt: state.lastSeenAt,
+          warnAfterMin: WARN_AFTER_MIN,
+          errorAfterMin: ERROR_AFTER_MIN
+        });
+        return Response.json({
+          connected: true,
+          lastStateAt: state.lastStateAt?.toISOString() ?? null,
+          lastSeenAt: state.lastSeenAt?.toISOString() ?? null,
+          freshness: f.freshness,
+          dataAgeMin: f.dataAgeMin,
+          liveAgeSec: f.liveAgeSec,
+          situation: state.lastState?.situation.key ?? null
+        });
       }
       return new Response("Not Found", { status: 404 });
     },
@@ -20657,49 +20411,71 @@ function startHttpSidecar(port, store, onConnect) {
     }
   });
 }
+
 // src/index.ts
-var POLL_MIN = Number(process.env.PACE_POLL_INTERVAL_MIN ?? "5");
 var HTTP_PORT = Number(process.env.PACE_HTTP_PORT ?? "4299");
-var CFG = { activeStartH: ACTIVE_START_H, activeEndH: ACTIVE_END_H, sleepStartH: SLEEP_START_H, bandWeekly: 2, bandSession: 5 };
-async function getPaceStatsHandler(store) {
-  const stats = await store.loadStats();
-  if (!stats) {
-    return { content: [{ type: "text", text: JSON.stringify({ error: "No data yet — poller has not completed a cycle. Try again in a moment." }) }] };
-  }
-  if (stats.credentialsStatus === "expired") {
-    return { content: [{ type: "text", text: JSON.stringify({ error: 'Credentials expired. Visit claude.ai/settings/usage and click "Reconnect to Claude Code" in the pace tracker gear panel.' }) }], isError: true };
-  }
-  if (stats.credentialsStatus === "missing") {
-    return { content: [{ type: "text", text: JSON.stringify({ error: 'No credentials. Visit claude.ai/settings/usage and click "Connect to Claude Code" in the pace tracker gear panel.' }) }], isError: true };
-  }
-  return { content: [{ type: "text", text: JSON.stringify(stats) }] };
+var state = { lastState: null, lastStateAt: null, lastSeenAt: null };
+function freshnessNow() {
+  return classifyFreshness({
+    now: new Date,
+    lastStateAt: state.lastStateAt,
+    lastSeenAt: state.lastSeenAt,
+    warnAfterMin: WARN_AFTER_MIN,
+    errorAfterMin: ERROR_AFTER_MIN
+  });
 }
-async function getSituationHandler(store) {
-  const stats = await store.loadStats();
-  if (!stats) {
-    return { content: [{ type: "text", text: "No data yet — poller has not completed a cycle." }] };
-  }
-  if (stats.credentialsStatus !== "valid") {
-    return {
-      content: [{ type: "text", text: `Credentials ${stats.credentialsStatus}. Visit claude.ai/settings/usage and click Connect/Reconnect in the pace tracker gear panel.` }],
-      isError: true
-    };
-  }
-  return { content: [{ type: "text", text: `${stats.situation}: ${stats.message}` }] };
+async function getPaceStatsHandler(s = state) {
+  const f = classifyFreshness({
+    now: new Date,
+    lastStateAt: s.lastStateAt,
+    lastSeenAt: s.lastSeenAt,
+    warnAfterMin: WARN_AFTER_MIN,
+    errorAfterMin: ERROR_AFTER_MIN
+  });
+  const body = {
+    status: { freshness: f.freshness, dataAgeMin: f.dataAgeMin, liveAgeSec: f.liveAgeSec },
+    payload: s.lastState
+  };
+  const isError = f.freshness === "stale-error";
+  return {
+    content: [{ type: "text", text: JSON.stringify(body) }],
+    ...isError ? { isError: true } : {}
+  };
 }
-var poller = new Poller(defaultStore, CFG);
-var httpServer = startHttpSidecar(HTTP_PORT, defaultStore, async () => {
-  poller.stop();
-  poller.start(POLL_MIN);
-});
-poller.start(POLL_MIN);
-var server = new McpServer({ name: "pace-tracker", version: "1.0.0" });
-server.tool("get_pace_stats", "Get current Claude usage pace statistics (weekly and session buckets, pace delta, situation)", {}, async () => getPaceStatsHandler(defaultStore));
-server.tool("get_situation", "Get the current pace situation classification and advisory message", {}, async () => getSituationHandler(defaultStore));
+async function getSituationHandler(s = state) {
+  const f = classifyFreshness({
+    now: new Date,
+    lastStateAt: s.lastStateAt,
+    lastSeenAt: s.lastSeenAt,
+    warnAfterMin: WARN_AFTER_MIN,
+    errorAfterMin: ERROR_AFTER_MIN
+  });
+  if (f.freshness === "no-data" || !s.lastState) {
+    return { content: [{ type: "text", text: "No data yet — open claude.ai/settings/usage to start pushing pace state." }] };
+  }
+  const { situation } = s.lastState;
+  const suffix = f.freshness === "stale-error" ? `[stale: ${f.dataAgeMin}m ago — open claude.ai/settings/usage to refresh]` : f.freshness === "stale-warning" ? `[stale: ${f.dataAgeMin}m ago]` : `[data: ${f.dataAgeMin}m ago]`;
+  const text = `${situation.key}: ${situation.message}
+trend: ${situation.trend}
+${suffix}`;
+  return {
+    content: [{ type: "text", text }],
+    ...f.freshness === "stale-error" ? { isError: true } : {}
+  };
+}
 async function main() {
+  const cached2 = await defaultStore.loadState();
+  if (cached2) {
+    state.lastState = cached2;
+    state.lastStateAt = new Date(Date.parse(cached2.pushedAt));
+  }
+  startHttpSidecar(HTTP_PORT, defaultStore, state);
+  const server = new McpServer({ name: "pace-tracker", version: "2.0.0" });
+  server.tool("get_pace_stats", "Get current Claude usage pace stats: raw /usage values, computed pace deltas, trends, and a freshness annotation.", {}, async () => getPaceStatsHandler(state));
+  server.tool("get_situation", "Get the highest-priority pace situation, advisory message, overall trend, and data freshness.", {}, async () => getSituationHandler(state));
   const transport = new StdioServerTransport;
   await server.connect(transport);
-  console.error(`[pace-mcp] running — HTTP sidecar on :${HTTP_PORT}, polling every ${POLL_MIN}min`);
+  console.error(`[pace-mcp] running — HTTP sidecar on :${HTTP_PORT}, warn/error: ${WARN_AFTER_MIN}m/${ERROR_AFTER_MIN}m`);
 }
 main().catch((err) => {
   console.error("[pace-mcp] fatal:", err);
@@ -20707,5 +20483,9 @@ main().catch((err) => {
 });
 export {
   getSituationHandler,
-  getPaceStatsHandler
+  getPaceStatsHandler,
+  freshnessNow
 };
+
+//# debugId=AF8E32816E98D76764756E2164756E21
+//# sourceMappingURL=index.js.map

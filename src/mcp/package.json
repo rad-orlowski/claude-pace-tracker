@@ -6,7 +6,7 @@
     "claude-pace-tracker-mcp": "dist/index.js"
   },
   "scripts": {
-    "build": "bun build src/index.ts --outfile dist/index.js --target node --sourcemap",
+    "build": "bun build src/index.ts --outdir=dist --target=node --sourcemap",
     "dev": "bun src/index.ts",
     "test": "bun test"
   },

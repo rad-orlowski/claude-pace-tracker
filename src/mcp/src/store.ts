@@ -1,46 +1,30 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { isValidStatePayload, type StatePayload } from './payload.js';
 
-export interface Config {
-  orgId:  string;
-  cookie: string;
-}
-
-export interface Stats {
-  updatedAt:          string;
-  credentialsStatus:  'valid' | 'expired' | 'missing';
-  situation:          string | null;
-  message:            string | null;
-  weekly:             { deltaPp: number; utilizationPct: number; elapsedPct: number };
-  session:            { deltaPp: number; utilizationPct: number };
-}
-
-async function readJson<T>(path: string): Promise<T | null> {
+async function readState(path: string): Promise<StatePayload | null> {
   try {
-    return JSON.parse(await readFile(path, 'utf8')) as T;
+    const raw = JSON.parse(await readFile(path, 'utf8'));
+    return isValidStatePayload(raw) ? raw : null;
   } catch {
     return null;
   }
 }
 
-async function writeJson(path: string, data: unknown): Promise<void> {
+async function writeState(path: string, data: StatePayload): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, JSON.stringify(data, null, 2), 'utf8');
 }
 
-export function makeStore(configPath: string, statsPath: string) {
+export function makeStore(statePath: string) {
   return {
-    loadConfig: () => readJson<Config>(configPath),
-    saveConfig: (c: Config) => writeJson(configPath, c),
-    loadStats:  () => readJson<Stats>(statsPath),
-    saveStats:  (s: Stats) => writeJson(statsPath, s),
+    loadState: () => readState(statePath),
+    saveState: (s: StatePayload) => writeState(statePath, s),
   };
 }
 
 const home = homedir();
 export const defaultStore = makeStore(
-  join(home, '.config', 'claude-pace-tracker', 'config.json'),
-  join(home, '.cache',  'claude-pace-tracker', 'stats.json'),
+  join(home, '.cache', 'claude-pace-tracker', 'state.json'),
 );

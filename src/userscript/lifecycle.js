@@ -3,7 +3,6 @@ import { PILL_CLASS } from './ui/components/pill.js';
 import { SUMMARY_CLASS } from './ui/components/summary-card.js';
 import { DAY_DIV_CLASS } from './ui/components/day-dividers.js';
 import { GEAR_ID } from './ui/components/settings.js';
-import { removeBanner } from './ui/components/reconnect-banner.js';
 
 const MASK_CLASS = '__claude-pace-mask';
 
@@ -42,7 +41,6 @@ export function installLifecycle(onRerender, onResumePolling, onStopPolling, onR
   function teardownAll() {
     const gear = document.getElementById(GEAR_ID);
     if (gear) gear.remove();
-    removeBanner();
     document.querySelectorAll(
       '.' + MARKER_CLASS + ', .' + PILL_CLASS + ', .' + MASK_CLASS + ', .' + SUMMARY_CLASS + ', .' + DAY_DIV_CLASS
     ).forEach(n => n.remove());

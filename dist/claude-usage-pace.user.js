@@ -12,8 +12,6 @@
 // @match        https://claude.ai/settings/usage*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
-// @grant        GM.cookie
-// @grant        GM_cookie
 // @grant        unsafeWindow
 // @connect      localhost
 // ==/UserScript==
@@ -30,66 +28,6 @@
   function getOrgIdFromCookie() {
     const m = document.cookie.match(/(?:^|;\s*)lastActiveOrg=([0-9a-f-]+)/);
     return m ? m[1] : null;
-  }
-  function namesOf(cookieString) {
-    if (!cookieString)
-      return [];
-    return cookieString.split(/;\s*/).map((p) => p.split("=")[0]).filter(Boolean);
-  }
-  function logCookieList(label, cookies) {
-    const names = cookies.map((c) => c.name);
-    LOG(`cookie diag — ${label}:`, { count: names.length, hasSessionKey: names.includes("sessionKey"), names });
-  }
-  function getCookieString() {
-    return new Promise((resolve) => {
-      const detailsBasic = { url: location.href };
-      const detailsPartition = { url: location.href, partitionKey: {} };
-      const format = (cookies) => cookies.map((c) => `${c.name}=${c.value}`).join("; ");
-      const docNames = namesOf(document.cookie || "");
-      LOG("cookie diag — document.cookie:", { count: docNames.length, hasSessionKey: docNames.includes("sessionKey"), names: docNames });
-      if (typeof GM !== "undefined" && typeof GM.cookie?.list === "function") {
-        const timeout = setTimeout(() => {
-          LOG("cookie diag — GM.cookie.list timed out");
-          resolve(null);
-        }, 3000);
-        Promise.all([
-          GM.cookie.list(detailsBasic).then((c) => c || []).catch(() => []),
-          GM.cookie.list(detailsPartition).then((c) => c || []).catch(() => [])
-        ]).then(([basic, partitioned]) => {
-          clearTimeout(timeout);
-          logCookieList("GM.cookie.list { url }", basic);
-          logCookieList("GM.cookie.list { url, partitionKey:{} }", partitioned);
-          const merged = new Map;
-          for (const c of basic)
-            merged.set(c.name, c);
-          for (const c of partitioned)
-            merged.set(c.name, c);
-          const all = [...merged.values()];
-          logCookieList("GM.cookie.list (merged)", all);
-          resolve(format(all) || null);
-        });
-        return;
-      }
-      if (typeof GM_cookie !== "undefined" && typeof GM_cookie.list === "function") {
-        const timeout = setTimeout(() => {
-          LOG("cookie diag — GM_cookie.list timed out");
-          resolve(null);
-        }, 3000);
-        GM_cookie.list(detailsBasic, (c, err) => {
-          clearTimeout(timeout);
-          if (err) {
-            LOG("cookie diag — GM_cookie.list error:", err);
-            resolve(null);
-            return;
-          }
-          logCookieList("GM_cookie.list { url }", c || []);
-          resolve(format(c || []) || null);
-        });
-        return;
-      }
-      LOG("cookie diag — no GM.cookie / GM_cookie available");
-      resolve(null);
-    });
   }
   function installCapture(onUsage, onFirstCapture) {
     const UW = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
@@ -113,7 +51,6 @@
           LOG("captured orgId from fetch:", capturedOrgId);
           onFirstCapture?.();
         }
-        LOG("observed /usage fetch", { url });
         p.then((r) => {
           if (!r || !r.ok) {
             WARN("fetch response not OK", r && r.status);
@@ -1417,98 +1354,6 @@
     document.body.appendChild(overlay);
   }
 
-  // src/userscript/ui/components/reconnect-banner.js
-  var BANNER_ID = "__claude-pace-reconnect-banner";
-  function gmFetch2(url, { method = "GET", headers = {}, body = undefined, timeoutMs = 3000 } = {}) {
-    return new Promise((resolve, reject) => {
-      GM_xmlhttpRequest({
-        method,
-        url,
-        headers,
-        data: body,
-        timeout: timeoutMs,
-        onload: (r) => resolve(r),
-        onerror: () => reject(new Error("network error")),
-        ontimeout: () => reject(new Error("timeout"))
-      });
-    });
-  }
-  async function fetchMcpStatus2(port) {
-    try {
-      const r = await gmFetch2(`http://localhost:${port}/status`, { timeoutMs: 1500 });
-      if (r.status < 200 || r.status >= 300)
-        return null;
-      return JSON.parse(r.responseText);
-    } catch {
-      return null;
-    }
-  }
-  async function reconnect(port, banner) {
-    const orgId = getCapturedOrgId();
-    const cookie = await getCookieString();
-    if (!orgId || !cookie)
-      return;
-    try {
-      const r = await gmFetch2(`http://localhost:${port}/credentials`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId, cookie })
-      });
-      if (r.status >= 200 && r.status < 300)
-        banner.remove();
-    } catch {}
-  }
-  function removeBanner() {
-    document.getElementById(BANNER_ID)?.remove();
-  }
-  async function maybeShowReconnectBanner(port = 4299) {
-    if (document.getElementById(BANNER_ID))
-      return;
-    const status = await fetchMcpStatus2(port);
-    if (!status || status.credentialsStatus !== "expired")
-      return;
-    const banner = document.createElement("div");
-    banner.id = BANNER_ID;
-    Object.assign(banner.style, {
-      position: "fixed",
-      top: "12px",
-      left: "50%",
-      transform: "translateX(-50%)",
-      zIndex: "99998",
-      background: "#7c3aed",
-      color: "#fff",
-      padding: "8px 16px",
-      borderRadius: "8px",
-      fontSize: "13px",
-      display: "flex",
-      alignItems: "center",
-      gap: "12px",
-      boxShadow: "0 4px 12px rgba(0,0,0,0.4)"
-    });
-    const text = document.createElement("span");
-    text.textContent = "Claude Code pace tracker credentials expired.";
-    banner.appendChild(text);
-    const btn = document.createElement("button");
-    btn.textContent = "Reconnect";
-    Object.assign(btn.style, {
-      background: "rgba(255,255,255,0.2)",
-      border: "none",
-      borderRadius: "4px",
-      color: "#fff",
-      padding: "3px 10px",
-      cursor: "pointer",
-      fontSize: "12px"
-    });
-    btn.onclick = () => reconnect(port, banner);
-    banner.appendChild(btn);
-    const close = document.createElement("button");
-    close.textContent = "✕";
-    Object.assign(close.style, { background: "none", border: "none", color: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: "14px" });
-    close.onclick = () => banner.remove();
-    banner.appendChild(close);
-    document.body.appendChild(banner);
-  }
-
   // src/userscript/lifecycle.js
   var MASK_CLASS2 = "__claude-pace-mask";
   var LOG3 = (...args) => console.log("[claude-pace]", ...args);
@@ -1543,7 +1388,6 @@
       const gear = document.getElementById(GEAR_ID);
       if (gear)
         gear.remove();
-      removeBanner();
       document.querySelectorAll("." + MARKER_CLASS + ", ." + PILL_CLASS + ", ." + MASK_CLASS2 + ", ." + SUMMARY_CLASS + ", ." + DAY_DIV_CLASS).forEach((n) => n.remove());
       document.querySelectorAll('[role="progressbar"]').forEach((bar) => {
         bar.style.background = "";
@@ -1611,7 +1455,7 @@
   var LOG4 = (...args) => console.log("[claude-pace]", ...args);
   var _lastPushTs = 0;
   var _heartbeatTimer = null;
-  function gmFetch3(url, { method = "GET", headers = {}, body = undefined, timeoutMs = 1500 } = {}) {
+  function gmFetch2(url, { method = "GET", headers = {}, body = undefined, timeoutMs = 1500 } = {}) {
     return new Promise((resolve, reject) => {
       if (typeof GM_xmlhttpRequest === "undefined") {
         reject(new Error("GM_xmlhttpRequest unavailable"));
@@ -1640,7 +1484,7 @@
       return;
     _lastPushTs = now;
     try {
-      await gmFetch3(`http://localhost:${cfg.mcpPort}/state`, {
+      await gmFetch2(`http://localhost:${cfg.mcpPort}/state`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -1656,7 +1500,7 @@
       return;
     const tick = async () => {
       try {
-        await gmFetch3(`http://localhost:${cfg.mcpPort}/heartbeat`, { method: "POST" });
+        await gmFetch2(`http://localhost:${cfg.mcpPort}/heartbeat`, { method: "POST" });
       } catch {}
     };
     _heartbeatTimer = setInterval(tick, 60000);
@@ -1708,7 +1552,6 @@
     startPolling(getCfg());
     startHeartbeat(getCfg());
     tryInjectGear(getCfg, applySettings);
-    maybeShowReconnectBanner(getCfg().mcpPort ?? 4299);
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);

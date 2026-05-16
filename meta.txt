@@ -12,8 +12,6 @@
 // @match        https://claude.ai/settings/usage*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
-// @grant        GM.cookie
-// @grant        GM_cookie
 // @grant        unsafeWindow
 // @connect      localhost
 // ==/UserScript==

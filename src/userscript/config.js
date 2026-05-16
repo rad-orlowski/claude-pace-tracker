@@ -10,6 +10,7 @@ export const CFG_DEFAULTS = {
   bandSession:     5,
   pollIntervalMin: 10,
   mcpPort:         4299,
+  mcpPushEnabled:  true,
 };
 
 export function loadCfg() {

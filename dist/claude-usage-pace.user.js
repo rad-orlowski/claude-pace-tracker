@@ -200,7 +200,8 @@
     bandWeekly: 2,
     bandSession: 5,
     pollIntervalMin: 10,
-    mcpPort: 4299
+    mcpPort: 4299,
+    mcpPushEnabled: true
   };
   function loadCfg() {
     try {
@@ -1531,7 +1532,7 @@
   // src/userscript/lifecycle.js
   var MASK_CLASS2 = "__claude-pace-mask";
   var LOG3 = (...args) => console.log("[claude-pace]", ...args);
-  function installLifecycle(onRerender, onResumePolling, onStopPolling) {
+  function installLifecycle(onRerender, onResumePolling, onStopPolling, onResumeHeartbeat, onStopHeartbeat) {
     setInterval(onRerender, 30000);
     const wrapHistory = (key) => {
       const orig = history[key];
@@ -1550,9 +1551,11 @@
         LOG3("navigated away from /settings/usage — teardown");
         teardownAll();
         onStopPolling();
+        onStopHeartbeat?.();
       } else {
         LOG3("navigated onto /settings/usage");
         onResumePolling();
+        onResumeHeartbeat?.();
         onRerender();
       }
     }
@@ -1573,14 +1576,128 @@
     }
   }
 
-  // src/userscript/main.js
+  // src/userscript/payload.js
+  function trendOf(severity, window2) {
+    if (window2 === "sleep")
+      return "sleep";
+    if (severity === "over")
+      return "over";
+    if (severity === "under")
+      return "under";
+    return "on-track";
+  }
+  function buildPushPayload(json, nowMs, cfg) {
+    if (!json || typeof json !== "object")
+      return null;
+    const signals2 = buildSignals(json, nowMs, cfg);
+    if (!signals2)
+      return null;
+    const allRA = Date.parse(json.seven_day.resets_at);
+    const sonRA = Date.parse(json.seven_day_sonnet.resets_at);
+    const sessRA = Date.parse(json.five_hour.resets_at);
+    const wMs = 7 * 24 * 3600 * 1000;
+    const sMs = 5 * 3600 * 1000;
+    const allWElapsed = activeElapsedPctOf(nowMs, allRA, wMs, cfg.activeStartH, cfg.activeEndH);
+    const sonWElapsed = activeElapsedPctOf(nowMs, sonRA, wMs, cfg.activeStartH, cfg.activeEndH);
+    const sessElapsed = activeElapsedPctOf(nowMs, sessRA, sMs, cfg.activeStartH, cfg.activeEndH);
+    const { key, params } = classifySituation(signals2, cfg);
+    const message = (SITUATION_MESSAGES[key] || (() => key))(params);
+    const win = signals2.window;
+    return {
+      schemaVersion: 1,
+      pushedAt: new Date(nowMs).toISOString(),
+      raw: {
+        seven_day: { utilization: json.seven_day.utilization, resets_at: json.seven_day.resets_at },
+        seven_day_sonnet: { utilization: json.seven_day_sonnet.utilization, resets_at: json.seven_day_sonnet.resets_at },
+        seven_day_opus: { utilization: json.seven_day_opus?.utilization ?? 0, resets_at: json.seven_day_opus?.resets_at ?? json.seven_day.resets_at },
+        five_hour: { utilization: json.five_hour.utilization, resets_at: json.five_hour.resets_at }
+      },
+      computed: {
+        window: win,
+        resetInH: signals2.resetInH,
+        daysLeft: signals2.daysLeft,
+        session: { utilizationPct: signals2.session.dp + sessElapsed, deltaPp: signals2.session.dp, elapsedPct: sessElapsed, trend: trendOf(signals2.session.sev, win) },
+        allWeekly: { utilizationPct: signals2.allWeekly.pct, deltaPp: signals2.allWeekly.dp, elapsedPct: allWElapsed, trend: trendOf(signals2.allWeekly.sev, win) },
+        allDaily: { deltaPp: signals2.allDaily.dp, trend: trendOf(signals2.allDaily.sev, win) },
+        sonnetWeekly: { utilizationPct: signals2.sonnetWeekly.pct, deltaPp: signals2.sonnetWeekly.dp, elapsedPct: sonWElapsed, trend: trendOf(signals2.sonnetWeekly.sev, win) },
+        sonnetDaily: { deltaPp: signals2.sonnetDaily.dp, trend: trendOf(signals2.sonnetDaily.sev, win) },
+        opusPct: signals2.opusPct
+      },
+      situation: { key, params, message, trend: trendOf(signals2.allWeekly.sev, win) }
+    };
+  }
+
+  // src/userscript/mcp-push.js
   var LOG4 = (...args) => console.log("[claude-pace]", ...args);
+  var _lastPushTs = 0;
+  var _heartbeatTimer = null;
+  function gmFetch3(url, { method = "GET", headers = {}, body = undefined, timeoutMs = 1500 } = {}) {
+    return new Promise((resolve, reject) => {
+      if (typeof GM_xmlhttpRequest === "undefined") {
+        reject(new Error("GM_xmlhttpRequest unavailable"));
+        return;
+      }
+      GM_xmlhttpRequest({
+        method,
+        url,
+        headers,
+        data: body,
+        timeout: timeoutMs,
+        onload: (r) => resolve(r),
+        onerror: () => reject(new Error("network error")),
+        ontimeout: () => reject(new Error("timeout"))
+      });
+    });
+  }
+  async function pushState(json, cfg) {
+    if (cfg.mcpPushEnabled === false)
+      return;
+    const now = Date.now();
+    if (now - _lastPushTs < 1000)
+      return;
+    const payload = buildPushPayload(json, now, cfg);
+    if (!payload)
+      return;
+    _lastPushTs = now;
+    try {
+      await gmFetch3(`http://localhost:${cfg.mcpPort}/state`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {
+      LOG4("mcp push skipped:", e?.message ?? e);
+    }
+  }
+  function startHeartbeat(cfg) {
+    if (cfg.mcpPushEnabled === false)
+      return;
+    if (_heartbeatTimer)
+      return;
+    const tick = async () => {
+      try {
+        await gmFetch3(`http://localhost:${cfg.mcpPort}/heartbeat`, { method: "POST" });
+      } catch {}
+    };
+    _heartbeatTimer = setInterval(tick, 60000);
+    tick();
+  }
+  function stopHeartbeat() {
+    if (!_heartbeatTimer)
+      return;
+    clearInterval(_heartbeatTimer);
+    _heartbeatTimer = null;
+  }
+
+  // src/userscript/main.js
+  var LOG5 = (...args) => console.log("[claude-pace]", ...args);
   var WARN3 = (...args) => console.warn("[claude-pace]", ...args);
   function onUsage(json) {
     if (!json || typeof json !== "object")
       return;
     setLastJson(json);
     renderAllMarkers(json, getCfg());
+    pushState(json, getCfg());
   }
   function applySettings(newCfg) {
     const pollChanged = newCfg.pollIntervalMin !== getCfg().pollIntervalMin;
@@ -1598,17 +1715,18 @@
     if (last)
       renderAllMarkers(last, getCfg());
   }
-  LOG4("script loaded, version 3.6.0");
+  LOG5("script loaded, version 3.6.0");
   installCapture(onUsage, () => {
     if (!isPolling())
       startPolling(getCfg());
   });
   function init() {
-    LOG4("init() — installing UI");
+    LOG5("init() — installing UI");
     injectPaceStyles();
     ensureLucide().catch((e) => WARN3("Lucide load failed:", e));
-    installLifecycle(rerenderMarkersFromLast, () => startPolling(getCfg()), stopPolling);
+    installLifecycle(rerenderMarkersFromLast, () => startPolling(getCfg()), stopPolling, () => startHeartbeat(getCfg()), stopHeartbeat);
     startPolling(getCfg());
+    startHeartbeat(getCfg());
     tryInjectGear(getCfg, applySettings);
     maybeShowReconnectBanner(getCfg().mcpPort ?? 4299);
   }

@@ -7,6 +7,7 @@ import { injectPaceStyles } from './ui/styles.js';
 import { installLifecycle } from './lifecycle.js';
 import { tryInjectGear } from './ui/components/settings.js';
 import { maybeShowReconnectBanner } from './ui/components/reconnect-banner.js';
+import { pushState, startHeartbeat, stopHeartbeat } from './mcp-push.js';
 
 const LOG  = (...args) => console.log('[claude-pace]', ...args);
 const WARN = (...args) => console.warn('[claude-pace]', ...args);
@@ -15,6 +16,7 @@ function onUsage(json) {
   if (!json || typeof json !== 'object') return;
   setLastJson(json);
   renderAllMarkers(json, getCfg());
+  pushState(json, getCfg());
 }
 
 function applySettings(newCfg) {
@@ -45,8 +47,11 @@ function init() {
     rerenderMarkersFromLast,
     () => startPolling(getCfg()),
     stopPolling,
+    () => startHeartbeat(getCfg()),
+    stopHeartbeat,
   );
   startPolling(getCfg());
+  startHeartbeat(getCfg());
   tryInjectGear(getCfg, applySettings);
   maybeShowReconnectBanner(getCfg().mcpPort ?? 4299);
 }

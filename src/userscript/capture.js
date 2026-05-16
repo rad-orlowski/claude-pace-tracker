@@ -13,16 +13,17 @@ export function getOrgIdFromCookie() {
 }
 
 export function installCapture(onUsage, onFirstCapture) {
-  if (window.__claudeUsagePaceFetchPatched) {
+  const UW = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
+  if (UW.__claudeUsagePaceFetchPatched) {
     LOG('fetch already patched — skipping');
     return;
   }
-  window.__claudeUsagePaceFetchPatched = true;
+  UW.__claudeUsagePaceFetchPatched = true;
   LOG('patching window.fetch');
 
-  const orig = window.fetch;
-  window.fetch = function (input, init) {
-    const p = orig.apply(this, arguments);
+  const orig = UW.fetch.bind(UW);
+  UW.fetch = function (input, init) {
+    const p = orig.apply(UW, arguments);
     let url = '';
     try { url = typeof input === 'string' ? input : (input && input.url) || ''; }
     catch (_) {}
@@ -33,7 +34,6 @@ export function installCapture(onUsage, onFirstCapture) {
         LOG('captured orgId from fetch:', capturedOrgId);
         onFirstCapture?.();
       }
-      LOG('observed /usage fetch', { url });
       p.then(r => {
         if (!r || !r.ok) { WARN('fetch response not OK', r && r.status); return; }
         return r.clone().json().then(d => onUsage(d));

@@ -6,6 +6,7 @@ import { ensureLucide } from './ui/lucide.js';
 import { injectPaceStyles } from './ui/styles.js';
 import { installLifecycle } from './lifecycle.js';
 import { tryInjectGear } from './ui/components/settings.js';
+import { pushState, startHeartbeat, stopHeartbeat } from './mcp-push.js';
 
 const LOG  = (...args) => console.log('[claude-pace]', ...args);
 const WARN = (...args) => console.warn('[claude-pace]', ...args);
@@ -14,13 +15,19 @@ function onUsage(json) {
   if (!json || typeof json !== 'object') return;
   setLastJson(json);
   renderAllMarkers(json, getCfg());
+  pushState(json, getCfg());
 }
 
 function applySettings(newCfg) {
-  const pollChanged = newCfg.pollIntervalMin !== getCfg().pollIntervalMin;
+  const prev = getCfg();
+  const pollChanged = newCfg.pollIntervalMin !== prev.pollIntervalMin;
+  const pushWasOn   = prev.mcpPushEnabled !== false;
+  const pushNowOn   = newCfg.mcpPushEnabled !== false;
   setCfg(newCfg);
   saveCfg(newCfg);
   if (pollChanged) { stopPolling(); startPolling(getCfg()); }
+  if (pushWasOn && !pushNowOn) stopHeartbeat();
+  else if (!pushWasOn && pushNowOn) startHeartbeat(getCfg());
   rerenderMarkersFromLast();
 }
 
@@ -30,7 +37,7 @@ function rerenderMarkersFromLast() {
   if (last) renderAllMarkers(last, getCfg());
 }
 
-LOG('script loaded, version 3.5.0');
+LOG('script loaded, version 4.0.0');
 
 installCapture(onUsage, () => {
   if (!isPolling()) startPolling(getCfg());
@@ -44,8 +51,11 @@ function init() {
     rerenderMarkersFromLast,
     () => startPolling(getCfg()),
     stopPolling,
+    () => startHeartbeat(getCfg()),
+    stopHeartbeat,
   );
   startPolling(getCfg());
+  startHeartbeat(getCfg());
   tryInjectGear(getCfg, applySettings);
 }
 

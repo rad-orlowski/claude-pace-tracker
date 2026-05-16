@@ -2,7 +2,7 @@ import { test, expect } from 'bun:test';
 import {
   elapsedPctOf, deltaPpOf, severityOf, timeWindowOf,
   activeHoursBetween, activeElapsedPctOf, frozenExpectedPctOf, todayEndExpectedPctOf,
-} from '../src/math.js';
+} from '../src/userscript/math.js';
 
 const HOUR = 3_600_000;
 
@@ -126,7 +126,7 @@ test('todayEndExpectedPctOf — during bonus hours returns same as already-passe
   expect(result.toFixed(6)).toBe(expected.toFixed(6));
 });
 
-import { buildBarGradient, buildWeeklyBar, BAR_COLORS } from '../src/ui/components/bar.js';
+import { buildBarGradient, buildWeeklyBar, BAR_COLORS } from '../src/userscript/ui/components/bar.js';
 
 const periodStart = new Date(2026, 0, 5, 0, 0, 0).getTime();
 const periodMs    = 7 * 24 * 3600 * 1000;

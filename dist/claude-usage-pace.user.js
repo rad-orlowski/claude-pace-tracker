@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Claude.ai Usage Pace Indicator
 // @namespace    https://github.com/rad-orlowski/claude-pace-tracker
-// @version      3.5.0
+// @version      4.0.0
 // @description  Adds a pace marker and over/under pace badge to each bucket on the usage page at claude.ai/settings/usage
 // @author       Rad Orlowski (https://github.com/rad-orlowski)
 // @homepageURL  https://github.com/rad-orlowski/claude-pace-tracker
@@ -11,11 +11,13 @@
 // @license      GPL-3.0-or-later
 // @match        https://claude.ai/settings/usage*
 // @run-at       document-start
-// @grant        none
+// @grant        GM_xmlhttpRequest
+// @grant        unsafeWindow
+// @connect      localhost
 // ==/UserScript==
 
 (() => {
-  // src/capture.js
+  // src/userscript/capture.js
   var LOG = (...args) => console.log("[claude-pace]", ...args);
   var WARN = (...args) => console.warn("[claude-pace]", ...args);
   var USAGE_RE = /\/api\/organizations\/([0-9a-f-]+)\/usage(\?|$)/;
@@ -28,15 +30,16 @@
     return m ? m[1] : null;
   }
   function installCapture(onUsage, onFirstCapture) {
-    if (window.__claudeUsagePaceFetchPatched) {
+    const UW = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
+    if (UW.__claudeUsagePaceFetchPatched) {
       LOG("fetch already patched — skipping");
       return;
     }
-    window.__claudeUsagePaceFetchPatched = true;
+    UW.__claudeUsagePaceFetchPatched = true;
     LOG("patching window.fetch");
-    const orig = window.fetch;
-    window.fetch = function(input, init) {
-      const p = orig.apply(this, arguments);
+    const orig = UW.fetch.bind(UW);
+    UW.fetch = function(input, init) {
+      const p = orig.apply(UW, arguments);
       let url = "";
       try {
         url = typeof input === "string" ? input : input && input.url || "";
@@ -48,7 +51,6 @@
           LOG("captured orgId from fetch:", capturedOrgId);
           onFirstCapture?.();
         }
-        LOG("observed /usage fetch", { url });
         p.then((r) => {
           if (!r || !r.ok) {
             WARN("fetch response not OK", r && r.status);
@@ -63,7 +65,7 @@
     };
   }
 
-  // src/polling.js
+  // src/userscript/polling.js
   var LOG2 = (...args) => console.log("[claude-pace]", ...args);
   var WARN2 = (...args) => console.warn("[claude-pace]", ...args);
   var pollTimer = null;
@@ -110,21 +112,22 @@
     });
   }
 
-  // src/constants.js
-  var BUCKET_MAP = {
-    five_hour: { title: "Current session", periodMs: 5 * 60 * 60 * 1000 },
-    seven_day: { title: "All models", periodMs: 7 * 24 * 60 * 60 * 1000 },
-    seven_day_sonnet: { title: "Sonnet only", periodMs: 7 * 24 * 60 * 60 * 1000 },
-    seven_day_opus: { title: "Opus only", periodMs: 7 * 24 * 60 * 60 * 1000 }
-  };
-  var PERIOD_LEN_MS = Object.fromEntries(Object.entries(BUCKET_MAP).map(([k, v]) => [k, v.periodMs]));
-  var TITLE_TO_KEY = Object.fromEntries(Object.entries(BUCKET_MAP).map(([k, v]) => [v.title, k]));
-  var NEUTRAL_BAND_PP = 5;
+  // src/common/constants.ts
   var ACTIVE_START_H = 7;
   var ACTIVE_END_H = 20;
   var SLEEP_START_H = 23;
+  var NEUTRAL_BAND_PP = 5;
 
-  // src/config.js
+  // src/userscript/constants.js
+  var BUCKET_MAP = {
+    five_hour: { title: "Current session", periodMs: 5 * 60 * 60 * 1000 },
+    seven_day: { title: "All models", periodMs: 7 * 24 * 60 * 60 * 1000 },
+    seven_day_sonnet: { title: "Sonnet only", periodMs: 7 * 24 * 60 * 60 * 1000 }
+  };
+  var PERIOD_LEN_MS = Object.fromEntries(Object.entries(BUCKET_MAP).map(([k, v]) => [k, v.periodMs]));
+  var TITLE_TO_KEY = Object.fromEntries(Object.entries(BUCKET_MAP).map(([k, v]) => [v.title, k]));
+
+  // src/userscript/config.js
   var CFG_KEY = "__claude_pace_cfg";
   var CFG_DEFAULTS = {
     activeStartH: ACTIVE_START_H,
@@ -132,7 +135,9 @@
     sleepStartH: SLEEP_START_H,
     bandWeekly: 2,
     bandSession: 5,
-    pollIntervalMin: 10
+    pollIntervalMin: 10,
+    mcpPort: 4299,
+    mcpPushEnabled: true
   };
   function loadCfg() {
     try {
@@ -159,7 +164,7 @@
     _cfg = c;
   }
 
-  // src/math.js
+  // src/common/math.ts
   function timeWindowOf(date, activeStartH = ACTIVE_START_H, activeEndH = ACTIVE_END_H, sleepStartH = SLEEP_START_H) {
     const h = date.getHours() + date.getMinutes() / 60;
     if (h >= activeStartH && h < activeEndH)
@@ -230,8 +235,7 @@
     const n = Math.round(dp);
     return (n > 0 ? "+" : "") + n + "%";
   }
-
-  // src/signals.js
+  // src/common/signals.ts
   var SITUATION_MESSAGES = {
     CRITICAL_LIMIT: (p) => `${p.model} weekly limit at ${p.pct}% — nearly exhausted. Minimise token use.`,
     RESET_TIGHT: (p) => `Reset in ${p.resetInH}h with ${p.pct}% used. Tight — wrap up heavy tasks or wait for the reset.`,
@@ -243,7 +247,7 @@
     WEEKLY_OVER_CORRECTING: (p) => `Weekly ${p.model} is +${p.wDp}% ahead but today is light — naturally self-correcting. Keep this daily pace.`,
     ALL_OVER_SONNET_UNDER: (p) => `Overall usage is high (+${p.allWDp}%) but Sonnet is underused. Prefer Sonnet for remaining work to get more value from it.`,
     ALL_OVER: (p) => `All-models weekly is +${p.allWDp}% ahead. Sonnet quota is fine — shift to Sonnet-heavy tasks to slow the overall burn.`,
-    SONNET_OVER: (p) => p.opusAhead ? `Sonnet weekly is +${p.sonWDp}% ahead. Opus is also running hot — switch to Haiku for lightweight tasks.` : `Sonnet weekly is +${p.sonWDp}% ahead. Switch to Opus or Haiku to preserve Sonnet quota.`,
+    SONNET_OVER: (p) => `Sonnet weekly is +${p.sonWDp}% ahead. Switch to Opus or Haiku to preserve Sonnet quota.`,
     SESSION_HOT_WEEKLY_SLACK: (p) => `Hot session (+${p.sessDp}%) but weekly is conserved (${p.allWDp}% under). Budget available — keep the pace.`,
     SESSION_HOT_DAILY_SLOW: (p) => `This session is hot (+${p.sessDp}%) but today's overall is still under target — slow start, active now. No concern yet.`,
     SESSION_HOT: (p) => `Session is running hot (+${p.sessDp}%). Weekly budget is healthy — but watch if this pace continues.`,
@@ -287,8 +291,6 @@
     const resetInH = Math.max(0, resetInMs / 3600000);
     const daysLeft = Math.ceil(resetInMs / (24 * 3600000));
     const win = timeWindowOf(new Date(now), cfg.activeStartH, cfg.activeEndH, cfg.sleepStartH);
-    const opusB = json && json.seven_day_opus;
-    const opusPct = opusB && opusB.utilization != null ? opusB.utilization : null;
     return {
       session: { dp: sessDp, sev: severityOf(sessDp, bS) },
       allWeekly: { dp: allWDp, sev: severityOf(allWDp, bW), pct: allB.utilization },
@@ -297,12 +299,11 @@
       sonnetDaily: { dp: sonDDp, sev: severityOf(sonDDp, bW) },
       window: win,
       resetInH,
-      daysLeft,
-      opusPct
+      daysLeft
     };
   }
   function classifySituation(signals, cfg) {
-    const { session, allWeekly, allDaily, sonnetWeekly, sonnetDaily, window: win, resetInH, daysLeft, opusPct } = signals;
+    const { session, allWeekly, allDaily, sonnetWeekly, sonnetDaily, window: win, resetInH, daysLeft } = signals;
     if (allWeekly.pct > 90)
       return { key: "CRITICAL_LIMIT", params: { model: "All-models", pct: Math.round(allWeekly.pct) } };
     if (sonnetWeekly.pct > 90)
@@ -334,7 +335,7 @@
       if (allWeekly.sev === "over")
         return { key: "ALL_OVER", params: { allWDp: Math.round(allWeekly.dp) } };
       if (sonnetWeekly.sev === "over")
-        return { key: "SONNET_OVER", params: { sonWDp: Math.round(sonnetWeekly.dp), opusAhead: opusPct != null && opusPct > sonnetWeekly.pct } };
+        return { key: "SONNET_OVER", params: { sonWDp: Math.round(sonnetWeekly.dp) } };
       return { key: "BONUS_OK", params: { allWDp: signedPp(allWeekly.dp) } };
     }
     if (allWeekly.sev === "over" && sonnetWeekly.sev === "over")
@@ -351,7 +352,7 @@
     if (allWeekly.sev === "over")
       return { key: "ALL_OVER", params: { allWDp: Math.round(allWeekly.dp) } };
     if (sonnetWeekly.sev === "over")
-      return { key: "SONNET_OVER", params: { sonWDp: Math.round(sonnetWeekly.dp), opusAhead: opusPct != null && opusPct > sonnetWeekly.pct } };
+      return { key: "SONNET_OVER", params: { sonWDp: Math.round(sonnetWeekly.dp) } };
     if (session.sev === "over" && allWeekly.sev === "under" && sonnetWeekly.sev === "under")
       return { key: "SESSION_HOT_WEEKLY_SLACK", params: {
         sessDp: Math.round(session.dp),
@@ -388,8 +389,7 @@
       return { key: "SONNET_LIGHT", params: { sonWDp: Math.round(Math.abs(sonnetWeekly.dp)) } };
     return { key: "ALL_CLEAR", params: {} };
   }
-
-  // src/ui/components/bar.js
+  // src/userscript/ui/components/bar.js
   var BAR_COLORS = {
     active: "#5c7dd6",
     activeAlt: "#4a6bbf",
@@ -464,14 +464,15 @@
     mask.style.borderRadius = usedPct <= 1 ? "4px" : "0 4px 4px 0";
   }
 
-  // src/ui/lucide.js
+  // src/userscript/ui/lucide.js
+  var UW = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
   var lucideReady = false;
   var lucideLoadPromise = null;
   function isLucideReady() {
     return lucideReady;
   }
   function ensureLucide() {
-    if (window.lucide) {
+    if (UW.lucide) {
       lucideReady = true;
       return Promise.resolve();
     }
@@ -502,16 +503,16 @@
     return el;
   }
   function renderLucideIcons(container) {
-    if (!window.lucide)
+    if (!UW.lucide)
       return;
     try {
-      window.lucide.createIcons({ nodes: [container] });
+      UW.lucide.createIcons({ nodes: [container] });
     } catch (_) {
-      window.lucide.createIcons();
+      UW.lucide.createIcons();
     }
   }
 
-  // src/ui/components/now-marker.js
+  // src/userscript/ui/components/now-marker.js
   var MARKER_CLASS = "__claude-pace-marker";
   function ensureMarker(host) {
     if (getComputedStyle(host).position === "static")
@@ -577,7 +578,7 @@
     return marker;
   }
 
-  // src/ui/components/day-dividers.js
+  // src/userscript/ui/components/day-dividers.js
   var DAY_DIV_CLASS = "__claude-pace-day-div";
   function ensureDayDividers(host, days) {
     host.querySelectorAll("." + DAY_DIV_CLASS).forEach((n) => n.remove());
@@ -599,7 +600,7 @@
     }
   }
 
-  // src/ui/components/pill.js
+  // src/userscript/ui/components/pill.js
   var PILL_CLASS = "__claude-pace-pill";
   var SUPPRESS_PILL_BEFORE_MS = 5 * 60 * 1000;
   var PILL_OVER = { color: "#ff7a7a", background: "rgba(255,90,90,0.15)", border: "1px solid rgba(255,90,90,0.35)" };
@@ -642,7 +643,7 @@
     return pill;
   }
 
-  // src/ui/components/summary-card.js
+  // src/userscript/ui/components/summary-card.js
   var SUMMARY_CLASS = "__claude-pace-summary";
   var SUMMARY_CATEGORY_INFO = {
     CRITICAL_LIMIT: { colour: "#ff7a7a", icon: "alert-triangle", fallback: "⚠" },
@@ -739,7 +740,7 @@
     card.querySelector("." + SUMMARY_CLASS + "-text").textContent = msgFn(params);
   }
 
-  // src/ui/dom.js
+  // src/userscript/ui/dom.js
   var rowCache = new Map;
   var KNOWN_TITLES = new Set(Object.values(BUCKET_MAP).map((m) => m.title));
   function rebuildRowCache() {
@@ -785,7 +786,7 @@
     return rowCache.get(title) || null;
   }
 
-  // src/render.js
+  // src/userscript/render.js
   var renderRetryTimer = null;
   var RENDER_RETRY_MS = 100;
   var RENDER_RETRY_MAX = 30;
@@ -933,11 +934,11 @@
       if (renderMarkerAndPill(key, bucket.utilization, bucket.resets_at, cfg))
         renderedAny = true;
     }
-    const signals = buildSignals(json, Date.now(), cfg);
-    if (signals) {
+    const signals2 = buildSignals(json, Date.now(), cfg);
+    if (signals2) {
       const section = findUsageSection();
       if (section) {
-        const { key, params } = classifySituation(signals, cfg);
+        const { key, params } = classifySituation(signals2, cfg);
         renderSummaryPanel(section, key, params);
       }
     }
@@ -947,7 +948,7 @@
     }
   }
 
-  // src/ui/styles.js
+  // src/userscript/ui/styles.js
   function injectPaceStyles() {
     if (document.getElementById("__claude-pace-styles"))
       return;
@@ -957,7 +958,91 @@
     document.head.appendChild(s);
   }
 
-  // src/ui/components/settings.js
+  // src/userscript/ui/components/mcp-section.js
+  function gmFetch(url, { method = "GET", headers = {}, body = undefined, timeoutMs = 1500 } = {}) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method,
+        url,
+        headers,
+        data: body,
+        timeout: timeoutMs,
+        onload: (r) => resolve(r),
+        onerror: () => reject(new Error("network error")),
+        ontimeout: () => reject(new Error("timeout"))
+      });
+    });
+  }
+  async function fetchMcpStatus(port) {
+    try {
+      const r = await gmFetch(`http://localhost:${port}/status`, { timeoutMs: 1500 });
+      if (r.status < 200 || r.status >= 300)
+        return null;
+      return JSON.parse(r.responseText);
+    } catch {
+      return null;
+    }
+  }
+  function fmtAge(ms) {
+    if (ms == null)
+      return null;
+    const sec = Math.max(0, Math.floor(ms / 1000));
+    if (sec < 60)
+      return `${sec}s ago`;
+    const min = Math.floor(sec / 60);
+    if (min < 60)
+      return `${min}m ago`;
+    return `${Math.floor(min / 60)}h ago`;
+  }
+  function renderMcpSection(container, getCfg2, applySettings) {
+    const section = document.createElement("div");
+    Object.assign(section.style, { marginTop: "16px", borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "12px" });
+    const label = document.createElement("div");
+    label.textContent = "Claude Code integration";
+    Object.assign(label.style, { fontSize: "11px", fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "8px" });
+    section.appendChild(label);
+    const statusEl = document.createElement("div");
+    Object.assign(statusEl.style, { fontSize: "12px", color: "rgba(255,255,255,0.6)", marginBottom: "8px" });
+    statusEl.textContent = "Checking…";
+    section.appendChild(statusEl);
+    const toggleRow = document.createElement("label");
+    Object.assign(toggleRow.style, { display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "#d1d5db", cursor: "pointer", userSelect: "none" });
+    const toggle = document.createElement("input");
+    toggle.type = "checkbox";
+    toggle.checked = getCfg2().mcpPushEnabled !== false;
+    toggle.onchange = () => {
+      applySettings({ ...getCfg2(), mcpPushEnabled: toggle.checked });
+      refresh();
+    };
+    const toggleLbl = document.createElement("span");
+    toggleLbl.textContent = "Push pace state to local MCP server";
+    toggleRow.appendChild(toggle);
+    toggleRow.appendChild(toggleLbl);
+    section.appendChild(toggleRow);
+    container.appendChild(section);
+    async function refresh() {
+      const cfg = getCfg2();
+      if (cfg.mcpPushEnabled === false) {
+        statusEl.textContent = "MCP push disabled";
+        return;
+      }
+      const status = await fetchMcpStatus(cfg.mcpPort);
+      if (!status) {
+        statusEl.textContent = `MCP not detected on :${cfg.mcpPort}`;
+        return;
+      }
+      if (status.freshness === "no-data") {
+        statusEl.textContent = `✓ Connected to MCP · waiting for first push`;
+        return;
+      }
+      const seen = status.lastSeenAt ? fmtAge(Date.now() - Date.parse(status.lastSeenAt)) : null;
+      const data = status.lastStateAt ? fmtAge(Date.now() - Date.parse(status.lastStateAt)) : null;
+      statusEl.textContent = `✓ Pushing to MCP · last state ${data}${seen ? ` · seen ${seen}` : ""}`;
+    }
+    refresh();
+  }
+
+  // src/userscript/ui/components/settings.js
   var GEAR_ID = "__claude-pace-gear";
   var PANEL_ID = "__claude-pace-panel";
   var _gearRetryTimer = null;
@@ -1198,6 +1283,7 @@
     addRow(s2, "bandSession", "Session (5h)", cfg.bandSession, 0, 20, "%pp ±", "Same tolerance for the 5-hour session bucket, which resets more often and naturally varies more than the weekly view.");
     const s3 = addSection("Polling");
     addRow(s3, "pollIntervalMin", "Check interval", cfg.pollIntervalMin, 1, 120, "min", "How often the script re-fetches usage data from Claude's API in the background. Lower = more up to date, higher = fewer requests.");
+    renderMcpSection(panel, () => cfg, applySettings);
     const sep = document.createElement("div");
     Object.assign(sep.style, { borderTop: "1px solid rgba(255,255,255,0.08)", margin: "16px 0 14px" });
     panel.appendChild(sep);
@@ -1264,10 +1350,10 @@
     document.body.appendChild(overlay);
   }
 
-  // src/lifecycle.js
+  // src/userscript/lifecycle.js
   var MASK_CLASS2 = "__claude-pace-mask";
   var LOG3 = (...args) => console.log("[claude-pace]", ...args);
-  function installLifecycle(onRerender, onResumePolling, onStopPolling) {
+  function installLifecycle(onRerender, onResumePolling, onStopPolling, onResumeHeartbeat, onStopHeartbeat) {
     setInterval(onRerender, 30000);
     const wrapHistory = (key) => {
       const orig = history[key];
@@ -1286,9 +1372,11 @@
         LOG3("navigated away from /settings/usage — teardown");
         teardownAll();
         onStopPolling();
+        onStopHeartbeat?.();
       } else {
         LOG3("navigated onto /settings/usage");
         onResumePolling();
+        onResumeHeartbeat?.();
         onRerender();
       }
     }
@@ -1308,23 +1396,144 @@
     }
   }
 
-  // src/main.js
+  // src/userscript/payload.js
+  function trendOf(severity, window2, dp) {
+    if (window2 === "sleep")
+      return "sleep";
+    if (window2 === "bonus" && dp < 0)
+      return "catch-up";
+    if (severity === "over")
+      return "over";
+    if (severity === "under")
+      return "under";
+    return "on-track";
+  }
+  function buildPushPayload(json, nowMs, cfg) {
+    if (!json || typeof json !== "object")
+      return null;
+    const signals2 = buildSignals(json, nowMs, cfg);
+    if (!signals2)
+      return null;
+    const allRA = Date.parse(json.seven_day.resets_at);
+    const sonRA = Date.parse(json.seven_day_sonnet.resets_at);
+    const sessRA = Date.parse(json.five_hour.resets_at);
+    const wMs = 7 * 24 * 3600 * 1000;
+    const sMs = 5 * 3600 * 1000;
+    const allWElapsed = activeElapsedPctOf(nowMs, allRA, wMs, cfg.activeStartH, cfg.activeEndH);
+    const sonWElapsed = activeElapsedPctOf(nowMs, sonRA, wMs, cfg.activeStartH, cfg.activeEndH);
+    const sessElapsed = activeElapsedPctOf(nowMs, sessRA, sMs, cfg.activeStartH, cfg.activeEndH);
+    const { key, params } = classifySituation(signals2, cfg);
+    const message = (SITUATION_MESSAGES[key] || (() => key))(params);
+    const win = signals2.window;
+    return {
+      schemaVersion: 1,
+      pushedAt: new Date(nowMs).toISOString(),
+      raw: {
+        seven_day: { utilization: json.seven_day.utilization, resets_at: json.seven_day.resets_at },
+        seven_day_sonnet: { utilization: json.seven_day_sonnet.utilization, resets_at: json.seven_day_sonnet.resets_at },
+        five_hour: { utilization: json.five_hour.utilization, resets_at: json.five_hour.resets_at }
+      },
+      computed: {
+        window: win,
+        resetInH: signals2.resetInH,
+        daysLeft: signals2.daysLeft,
+        session: { utilizationPct: signals2.session.dp + sessElapsed, deltaPp: signals2.session.dp, elapsedPct: sessElapsed, trend: trendOf(signals2.session.sev, win, signals2.session.dp) },
+        allWeekly: { utilizationPct: signals2.allWeekly.pct, deltaPp: signals2.allWeekly.dp, elapsedPct: allWElapsed, trend: trendOf(signals2.allWeekly.sev, win, signals2.allWeekly.dp) },
+        allDaily: { deltaPp: signals2.allDaily.dp, trend: trendOf(signals2.allDaily.sev, win, signals2.allDaily.dp) },
+        sonnetWeekly: { utilizationPct: signals2.sonnetWeekly.pct, deltaPp: signals2.sonnetWeekly.dp, elapsedPct: sonWElapsed, trend: trendOf(signals2.sonnetWeekly.sev, win, signals2.sonnetWeekly.dp) },
+        sonnetDaily: { deltaPp: signals2.sonnetDaily.dp, trend: trendOf(signals2.sonnetDaily.sev, win, signals2.sonnetDaily.dp) }
+      },
+      situation: { key, params, message, trend: trendOf(signals2.allWeekly.sev, win, signals2.allWeekly.dp) }
+    };
+  }
+
+  // src/userscript/mcp-push.js
   var LOG4 = (...args) => console.log("[claude-pace]", ...args);
+  var _lastPushTs = 0;
+  var _heartbeatTimer = null;
+  function gmFetch2(url, { method = "GET", headers = {}, body = undefined, timeoutMs = 1500 } = {}) {
+    return new Promise((resolve, reject) => {
+      if (typeof GM_xmlhttpRequest === "undefined") {
+        reject(new Error("GM_xmlhttpRequest unavailable"));
+        return;
+      }
+      GM_xmlhttpRequest({
+        method,
+        url,
+        headers,
+        data: body,
+        timeout: timeoutMs,
+        onload: (r) => resolve(r),
+        onerror: () => reject(new Error("network error")),
+        ontimeout: () => reject(new Error("timeout"))
+      });
+    });
+  }
+  async function pushState(json, cfg) {
+    if (cfg.mcpPushEnabled === false)
+      return;
+    const now = Date.now();
+    if (now - _lastPushTs < 1000)
+      return;
+    const payload = buildPushPayload(json, now, cfg);
+    if (!payload)
+      return;
+    _lastPushTs = now;
+    try {
+      await gmFetch2(`http://localhost:${cfg.mcpPort}/state`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {
+      LOG4("mcp push skipped:", e?.message ?? e);
+    }
+  }
+  function startHeartbeat(cfg) {
+    if (cfg.mcpPushEnabled === false)
+      return;
+    if (_heartbeatTimer)
+      return;
+    const tick = async () => {
+      try {
+        await gmFetch2(`http://localhost:${cfg.mcpPort}/heartbeat`, { method: "POST" });
+      } catch {}
+    };
+    _heartbeatTimer = setInterval(tick, 60000);
+    tick();
+  }
+  function stopHeartbeat() {
+    if (!_heartbeatTimer)
+      return;
+    clearInterval(_heartbeatTimer);
+    _heartbeatTimer = null;
+  }
+
+  // src/userscript/main.js
+  var LOG5 = (...args) => console.log("[claude-pace]", ...args);
   var WARN3 = (...args) => console.warn("[claude-pace]", ...args);
   function onUsage(json) {
     if (!json || typeof json !== "object")
       return;
     setLastJson(json);
     renderAllMarkers(json, getCfg());
+    pushState(json, getCfg());
   }
   function applySettings(newCfg) {
-    const pollChanged = newCfg.pollIntervalMin !== getCfg().pollIntervalMin;
+    const prev = getCfg();
+    const pollChanged = newCfg.pollIntervalMin !== prev.pollIntervalMin;
+    const pushWasOn = prev.mcpPushEnabled !== false;
+    const pushNowOn = newCfg.mcpPushEnabled !== false;
     setCfg(newCfg);
     saveCfg(newCfg);
     if (pollChanged) {
       stopPolling();
       startPolling(getCfg());
     }
+    if (pushWasOn && !pushNowOn)
+      stopHeartbeat();
+    else if (!pushWasOn && pushNowOn)
+      startHeartbeat(getCfg());
     rerenderMarkersFromLast();
   }
   function rerenderMarkersFromLast() {
@@ -1333,17 +1542,18 @@
     if (last)
       renderAllMarkers(last, getCfg());
   }
-  LOG4("script loaded, version 3.5.0");
+  LOG5("script loaded, version 4.0.0");
   installCapture(onUsage, () => {
     if (!isPolling())
       startPolling(getCfg());
   });
   function init() {
-    LOG4("init() — installing UI");
+    LOG5("init() — installing UI");
     injectPaceStyles();
     ensureLucide().catch((e) => WARN3("Lucide load failed:", e));
-    installLifecycle(rerenderMarkersFromLast, () => startPolling(getCfg()), stopPolling);
+    installLifecycle(rerenderMarkersFromLast, () => startPolling(getCfg()), stopPolling, () => startHeartbeat(getCfg()), stopHeartbeat);
     startPolling(getCfg());
+    startHeartbeat(getCfg());
     tryInjectGear(getCfg, applySettings);
   }
   if (document.readyState === "loading") {

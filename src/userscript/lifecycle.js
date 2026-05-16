@@ -8,7 +8,7 @@ const MASK_CLASS = '__claude-pace-mask';
 
 const LOG = (...args) => console.log('[claude-pace]', ...args);
 
-export function installLifecycle(onRerender, onResumePolling, onStopPolling) {
+export function installLifecycle(onRerender, onResumePolling, onStopPolling, onResumeHeartbeat, onStopHeartbeat) {
   setInterval(onRerender, 30_000);
 
   const wrapHistory = (key) => {
@@ -29,9 +29,11 @@ export function installLifecycle(onRerender, onResumePolling, onStopPolling) {
       LOG('navigated away from /settings/usage — teardown');
       teardownAll();
       onStopPolling();
+      onStopHeartbeat?.();
     } else {
       LOG('navigated onto /settings/usage');
       onResumePolling();
+      onResumeHeartbeat?.();
       onRerender();
     }
   }

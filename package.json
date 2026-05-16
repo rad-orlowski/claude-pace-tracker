@@ -1,10 +1,11 @@
 {
   "name": "claude-usage-pace",
-  "version": "3.5.0",
+  "version": "4.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun run build.ts",
+    "postinstall": "bun install --cwd src/mcp",
+    "build": "bun run build.ts && bun run --cwd src/mcp build",
     "test": "bun test"
   }
 }

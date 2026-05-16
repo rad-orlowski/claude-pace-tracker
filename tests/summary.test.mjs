@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { buildSignals, classifySituation, SITUATION_MESSAGES } from '../src/signals.js';
+import { buildSignals, classifySituation, SITUATION_MESSAGES } from '../src/userscript/signals.js';
 
 const periodMs = 7 * 24 * 3600 * 1000;
 const sessMs   = 5 * 3600 * 1000;
@@ -126,30 +126,16 @@ test('classifySituation — DAILY_BEHIND',         () => expect(classifySituatio
 test('classifySituation — DAILY_OK_WEEKLY_LAGGING', () => expect(classifySituation(makeSignals({ allWDP: -5 }), cfg).key).toBe('DAILY_OK_WEEKLY_LAGGING'));
 test('classifySituation — SONNET_LIGHT',         () => expect(classifySituation(makeSignals({ sonWDP: -5 }), cfg).key).toBe('SONNET_LIGHT'));
 
-test('classifySituation — SONNET_OVER opusAhead=true when opusPct > sonnet pct', () => {
-  const signals = { ...makeSignals({ sonWDP: 8 }), opusPct: 70 };
-  expect(classifySituation(signals, cfg).params.opusAhead).toBe(true);
-});
-
-test('classifySituation — SONNET_OVER opusAhead=false when opusPct <= sonnet pct', () => {
-  const signals = { ...makeSignals({ sonWDP: 8 }), opusPct: 30 };
-  expect(classifySituation(signals, cfg).params.opusAhead).toBe(false);
-});
-
 // ── SITUATION_MESSAGES ────────────────────────────────────────────────────────
 
 test('SITUATION_MESSAGES — ALL_CLEAR returns a non-empty string', () => {
   expect(SITUATION_MESSAGES.ALL_CLEAR({}).length).toBeGreaterThan(0);
 });
 
-test('SITUATION_MESSAGES — SONNET_OVER mentions Haiku only when opusAhead', () => {
-  const msg = SITUATION_MESSAGES.SONNET_OVER({ sonWDp: 6, opusAhead: true });
-  expect(msg).toContain('Haiku');
-});
-
-test('SITUATION_MESSAGES — SONNET_OVER mentions Opus when not opusAhead', () => {
-  const msg = SITUATION_MESSAGES.SONNET_OVER({ sonWDp: 6, opusAhead: false });
+test('SITUATION_MESSAGES — SONNET_OVER recommends Opus or Haiku', () => {
+  const msg = SITUATION_MESSAGES.SONNET_OVER({ sonWDp: 6 });
   expect(msg).toContain('Opus');
+  expect(msg).toContain('Haiku');
 });
 
 test('SITUATION_MESSAGES — every key is a function', () => {

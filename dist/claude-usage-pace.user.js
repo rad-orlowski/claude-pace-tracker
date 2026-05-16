@@ -1025,8 +1025,8 @@
     document.head.appendChild(s);
   }
 
-  // src/userscript/ui/components/mcp-connect.js
-  function gmFetch(url, { method = "GET", headers = {}, body = undefined, timeoutMs = 3000 } = {}) {
+  // src/userscript/ui/components/mcp-section.js
+  function gmFetch(url, { method = "GET", headers = {}, body = undefined, timeoutMs = 1500 } = {}) {
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
         method,
@@ -1050,37 +1050,16 @@
       return null;
     }
   }
-  async function connect(port, statusEl, btnEl) {
-    btnEl.disabled = true;
-    statusEl.textContent = "Connecting…";
-    const orgId = getCapturedOrgId();
-    if (!orgId) {
-      statusEl.textContent = "⚠ Org ID not yet captured — reload the page and try again.";
-      btnEl.disabled = false;
-      return;
-    }
-    const cookie = await getCookieString();
-    if (!cookie) {
-      statusEl.textContent = "⚠ Could not read cookies. Ensure Tampermonkey is installed and @grant GM_cookie is active.";
-      btnEl.disabled = false;
-      return;
-    }
-    try {
-      const r = await gmFetch(`http://localhost:${port}/credentials`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId, cookie })
-      });
-      if (r.status >= 200 && r.status < 300) {
-        statusEl.textContent = "✓ Connected";
-        btnEl.textContent = "Reconnect";
-      } else {
-        statusEl.textContent = `⚠ Server error ${r.status}`;
-      }
-    } catch {
-      statusEl.textContent = "⚠ MCP server not reachable — is it running?";
-    }
-    btnEl.disabled = false;
+  function fmtAge(ms) {
+    if (ms == null)
+      return null;
+    const sec = Math.max(0, Math.floor(ms / 1000));
+    if (sec < 60)
+      return `${sec}s ago`;
+    const min = Math.floor(sec / 60);
+    if (min < 60)
+      return `${min}m ago`;
+    return `${Math.floor(min / 60)}h ago`;
   }
   function renderMcpSection(container, getCfg2, applySettings) {
     const section = document.createElement("div");
@@ -1089,44 +1068,45 @@
     label.textContent = "Claude Code integration";
     Object.assign(label.style, { fontSize: "11px", fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "8px" });
     section.appendChild(label);
-    const row = document.createElement("div");
-    Object.assign(row.style, { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" });
-    const statusEl = document.createElement("span");
-    Object.assign(statusEl.style, { fontSize: "12px", color: "rgba(255,255,255,0.55)", flex: "1" });
+    const statusEl = document.createElement("div");
+    Object.assign(statusEl.style, { fontSize: "12px", color: "rgba(255,255,255,0.6)", marginBottom: "8px" });
     statusEl.textContent = "Checking…";
-    const btn = document.createElement("button");
-    btn.textContent = "Connect";
-    Object.assign(btn.style, {
-      fontSize: "11px",
-      padding: "3px 10px",
-      borderRadius: "4px",
-      cursor: "pointer",
-      background: "rgba(255,255,255,0.08)",
-      border: "1px solid rgba(255,255,255,0.15)",
-      color: "rgba(255,255,255,0.8)"
-    });
-    const cfg = getCfg2();
-    const port = cfg.mcpPort ?? 4299;
-    btn.onclick = () => connect(port, statusEl, btn);
-    row.appendChild(statusEl);
-    row.appendChild(btn);
-    section.appendChild(row);
+    section.appendChild(statusEl);
+    const toggleRow = document.createElement("label");
+    Object.assign(toggleRow.style, { display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "#d1d5db", cursor: "pointer", userSelect: "none" });
+    const toggle = document.createElement("input");
+    toggle.type = "checkbox";
+    toggle.checked = getCfg2().mcpPushEnabled !== false;
+    toggle.onchange = () => {
+      applySettings({ ...getCfg2(), mcpPushEnabled: toggle.checked });
+      refresh();
+    };
+    const toggleLbl = document.createElement("span");
+    toggleLbl.textContent = "Push pace state to local MCP server";
+    toggleRow.appendChild(toggle);
+    toggleRow.appendChild(toggleLbl);
+    section.appendChild(toggleRow);
     container.appendChild(section);
-    fetchMcpStatus(port).then((status) => {
-      if (!status) {
-        statusEl.textContent = "MCP server not running";
+    async function refresh() {
+      const cfg = getCfg2();
+      if (cfg.mcpPushEnabled === false) {
+        statusEl.textContent = "MCP push disabled";
         return;
       }
-      if (status.credentialsStatus === "expired") {
-        statusEl.textContent = "⚠ Credentials expired";
-        btn.textContent = "Reconnect";
-      } else if (status.credentialsStatus === "valid") {
-        statusEl.textContent = `✓ Connected · ${status.situation ?? "…"}`;
-        btn.textContent = "Reconnect";
-      } else {
-        statusEl.textContent = "Not connected";
+      const status = await fetchMcpStatus(cfg.mcpPort);
+      if (!status) {
+        statusEl.textContent = `MCP not detected on :${cfg.mcpPort}`;
+        return;
       }
-    });
+      if (status.freshness === "no-data") {
+        statusEl.textContent = `✓ Connected to MCP · waiting for first push`;
+        return;
+      }
+      const seen = status.lastSeenAt ? fmtAge(Date.now() - Date.parse(status.lastSeenAt)) : null;
+      const data = status.lastStateAt ? fmtAge(Date.now() - Date.parse(status.lastStateAt)) : null;
+      statusEl.textContent = `✓ Pushing to MCP · last state ${data}${seen ? ` · seen ${seen}` : ""}`;
+    }
+    refresh();
   }
 
   // src/userscript/ui/components/settings.js

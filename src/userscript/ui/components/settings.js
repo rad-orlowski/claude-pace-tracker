@@ -1,6 +1,6 @@
 import { CFG_DEFAULTS } from '../../config.js';
 import { ensureLucide, makeLucideIcon, renderLucideIcons, isLucideReady } from '../lucide.js';
-import { renderMcpSection } from './mcp-connect.js';
+import { renderMcpSection } from './mcp-section.js';
 
 export const GEAR_ID  = '__claude-pace-gear';
 export const PANEL_ID = '__claude-pace-panel';

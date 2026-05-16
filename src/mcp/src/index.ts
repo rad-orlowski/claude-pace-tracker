@@ -4,10 +4,9 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { defaultStore } from './store.js';
 import { startHttpSidecar, type SidecarState } from './http.js';
 import { classifyFreshness } from './freshness.js';
+import { WARN_AFTER_MIN, ERROR_AFTER_MIN } from './freshness-config.js';
 
-const HTTP_PORT       = Number(process.env.PACE_HTTP_PORT          ?? '4299');
-const WARN_AFTER_MIN  = Number(process.env.PACE_STALE_WARN_MIN     ?? '30');
-const ERROR_AFTER_MIN = Number(process.env.PACE_STALE_ERROR_MIN    ?? '120');
+const HTTP_PORT = Number(process.env.PACE_HTTP_PORT ?? '4299');
 
 const state: SidecarState = { lastState: null, lastStateAt: null, lastSeenAt: null };
 

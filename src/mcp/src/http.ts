@@ -1,6 +1,7 @@
 import type { makeStore } from './store.js';
 import { isValidStatePayload, type StatePayload } from './payload.js';
 import { classifyFreshness } from './freshness.js';
+import { WARN_AFTER_MIN, ERROR_AFTER_MIN } from './freshness-config.js';
 
 type Store = ReturnType<typeof makeStore>;
 
@@ -9,9 +10,6 @@ export interface SidecarState {
   lastStateAt: Date | null;
   lastSeenAt:  Date | null;
 }
-
-const WARN_AFTER_MIN  = Number(process.env.PACE_STALE_WARN_MIN  ?? '30');
-const ERROR_AFTER_MIN = Number(process.env.PACE_STALE_ERROR_MIN ?? '120');
 
 export function startHttpSidecar(
   port:  number,

@@ -1,8 +1,9 @@
 import { buildSignals, classifySituation, SITUATION_MESSAGES } from './signals.js';
 import { activeElapsedPctOf } from './math.js';
 
-function trendOf(severity, window) {
+function trendOf(severity, window, dp) {
   if (window === 'sleep') return 'sleep';
+  if (window === 'bonus' && dp < 0) return 'catch-up';
   if (severity === 'over')    return 'over';
   if (severity === 'under')   return 'under';
   return 'on-track';
@@ -40,13 +41,13 @@ export function buildPushPayload(json, nowMs, cfg) {
       window:   win,
       resetInH: signals.resetInH,
       daysLeft: signals.daysLeft,
-      session:      { utilizationPct: signals.session.dp + sessElapsed, deltaPp: signals.session.dp,      elapsedPct: sessElapsed, trend: trendOf(signals.session.sev,      win) },
-      allWeekly:    { utilizationPct: signals.allWeekly.pct,             deltaPp: signals.allWeekly.dp,    elapsedPct: allWElapsed, trend: trendOf(signals.allWeekly.sev,    win) },
-      allDaily:     { deltaPp: signals.allDaily.dp,    trend: trendOf(signals.allDaily.sev,    win) },
-      sonnetWeekly: { utilizationPct: signals.sonnetWeekly.pct,          deltaPp: signals.sonnetWeekly.dp, elapsedPct: sonWElapsed, trend: trendOf(signals.sonnetWeekly.sev, win) },
-      sonnetDaily:  { deltaPp: signals.sonnetDaily.dp, trend: trendOf(signals.sonnetDaily.sev, win) },
+      session:      { utilizationPct: signals.session.dp + sessElapsed, deltaPp: signals.session.dp,      elapsedPct: sessElapsed, trend: trendOf(signals.session.sev,      win, signals.session.dp) },
+      allWeekly:    { utilizationPct: signals.allWeekly.pct,             deltaPp: signals.allWeekly.dp,    elapsedPct: allWElapsed, trend: trendOf(signals.allWeekly.sev,    win, signals.allWeekly.dp) },
+      allDaily:     { deltaPp: signals.allDaily.dp,    trend: trendOf(signals.allDaily.sev,    win, signals.allDaily.dp) },
+      sonnetWeekly: { utilizationPct: signals.sonnetWeekly.pct,          deltaPp: signals.sonnetWeekly.dp, elapsedPct: sonWElapsed, trend: trendOf(signals.sonnetWeekly.sev, win, signals.sonnetWeekly.dp) },
+      sonnetDaily:  { deltaPp: signals.sonnetDaily.dp, trend: trendOf(signals.sonnetDaily.sev, win, signals.sonnetDaily.dp) },
       opusPct: signals.opusPct,
     },
-    situation: { key, params, message, trend: trendOf(signals.allWeekly.sev, win) },
+    situation: { key, params, message, trend: trendOf(signals.allWeekly.sev, win, signals.allWeekly.dp) },
   };
 }

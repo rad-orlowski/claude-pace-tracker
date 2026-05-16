@@ -19,10 +19,15 @@ function onUsage(json) {
 }
 
 function applySettings(newCfg) {
-  const pollChanged = newCfg.pollIntervalMin !== getCfg().pollIntervalMin;
+  const prev = getCfg();
+  const pollChanged = newCfg.pollIntervalMin !== prev.pollIntervalMin;
+  const pushWasOn   = prev.mcpPushEnabled !== false;
+  const pushNowOn   = newCfg.mcpPushEnabled !== false;
   setCfg(newCfg);
   saveCfg(newCfg);
   if (pollChanged) { stopPolling(); startPolling(getCfg()); }
+  if (pushWasOn && !pushNowOn) stopHeartbeat();
+  else if (!pushWasOn && pushNowOn) startHeartbeat(getCfg());
   rerenderMarkersFromLast();
 }
 

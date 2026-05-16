@@ -1401,9 +1401,11 @@
   }
 
   // src/userscript/payload.js
-  function trendOf(severity, window2) {
+  function trendOf(severity, window2, dp) {
     if (window2 === "sleep")
       return "sleep";
+    if (window2 === "bonus" && dp < 0)
+      return "catch-up";
     if (severity === "over")
       return "over";
     if (severity === "under")
@@ -1440,14 +1442,14 @@
         window: win,
         resetInH: signals2.resetInH,
         daysLeft: signals2.daysLeft,
-        session: { utilizationPct: signals2.session.dp + sessElapsed, deltaPp: signals2.session.dp, elapsedPct: sessElapsed, trend: trendOf(signals2.session.sev, win) },
-        allWeekly: { utilizationPct: signals2.allWeekly.pct, deltaPp: signals2.allWeekly.dp, elapsedPct: allWElapsed, trend: trendOf(signals2.allWeekly.sev, win) },
-        allDaily: { deltaPp: signals2.allDaily.dp, trend: trendOf(signals2.allDaily.sev, win) },
-        sonnetWeekly: { utilizationPct: signals2.sonnetWeekly.pct, deltaPp: signals2.sonnetWeekly.dp, elapsedPct: sonWElapsed, trend: trendOf(signals2.sonnetWeekly.sev, win) },
-        sonnetDaily: { deltaPp: signals2.sonnetDaily.dp, trend: trendOf(signals2.sonnetDaily.sev, win) },
+        session: { utilizationPct: signals2.session.dp + sessElapsed, deltaPp: signals2.session.dp, elapsedPct: sessElapsed, trend: trendOf(signals2.session.sev, win, signals2.session.dp) },
+        allWeekly: { utilizationPct: signals2.allWeekly.pct, deltaPp: signals2.allWeekly.dp, elapsedPct: allWElapsed, trend: trendOf(signals2.allWeekly.sev, win, signals2.allWeekly.dp) },
+        allDaily: { deltaPp: signals2.allDaily.dp, trend: trendOf(signals2.allDaily.sev, win, signals2.allDaily.dp) },
+        sonnetWeekly: { utilizationPct: signals2.sonnetWeekly.pct, deltaPp: signals2.sonnetWeekly.dp, elapsedPct: sonWElapsed, trend: trendOf(signals2.sonnetWeekly.sev, win, signals2.sonnetWeekly.dp) },
+        sonnetDaily: { deltaPp: signals2.sonnetDaily.dp, trend: trendOf(signals2.sonnetDaily.sev, win, signals2.sonnetDaily.dp) },
         opusPct: signals2.opusPct
       },
-      situation: { key, params, message, trend: trendOf(signals2.allWeekly.sev, win) }
+      situation: { key, params, message, trend: trendOf(signals2.allWeekly.sev, win, signals2.allWeekly.dp) }
     };
   }
 
@@ -1524,13 +1526,20 @@
     pushState(json, getCfg());
   }
   function applySettings(newCfg) {
-    const pollChanged = newCfg.pollIntervalMin !== getCfg().pollIntervalMin;
+    const prev = getCfg();
+    const pollChanged = newCfg.pollIntervalMin !== prev.pollIntervalMin;
+    const pushWasOn = prev.mcpPushEnabled !== false;
+    const pushNowOn = newCfg.mcpPushEnabled !== false;
     setCfg(newCfg);
     saveCfg(newCfg);
     if (pollChanged) {
       stopPolling();
       startPolling(getCfg());
     }
+    if (pushWasOn && !pushNowOn)
+      stopHeartbeat();
+    else if (!pushWasOn && pushNowOn)
+      startHeartbeat(getCfg());
     rerenderMarkersFromLast();
   }
   function rerenderMarkersFromLast() {

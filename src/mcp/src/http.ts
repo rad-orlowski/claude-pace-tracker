@@ -1,11 +1,22 @@
-import { makeStore } from './store.js';
+import type { makeStore } from './store.js';
+import { isValidStatePayload, type StatePayload } from './payload.js';
+import { classifyFreshness } from './freshness.js';
 
 type Store = ReturnType<typeof makeStore>;
 
+export interface SidecarState {
+  lastState:   StatePayload | null;
+  lastStateAt: Date | null;
+  lastSeenAt:  Date | null;
+}
+
+const WARN_AFTER_MIN  = Number(process.env.PACE_STALE_WARN_MIN  ?? '30');
+const ERROR_AFTER_MIN = Number(process.env.PACE_STALE_ERROR_MIN ?? '120');
+
 export function startHttpSidecar(
-  port:      number,
-  store:     Store,
-  onConnect: () => Promise<void>,
+  port:  number,
+  store: Store,
+  state: SidecarState,
 ): ReturnType<typeof Bun.serve> {
   return Bun.serve({
     port,
@@ -13,30 +24,41 @@ export function startHttpSidecar(
     async fetch(req) {
       const url = new URL(req.url);
 
-      if (req.method === 'GET' && url.pathname === '/status') {
-        const stats  = await store.loadStats();
-        const config = await store.loadConfig();
-        const credentialsStatus = stats?.credentialsStatus
-          ?? (config ? 'valid' : 'missing');
-        return Response.json({
-          connected:         true,
-          credentialsStatus,
-          lastPoll:          stats?.updatedAt ?? null,
-          situation:         stats?.situation ?? null,
-        });
+      if (req.method === 'POST' && url.pathname === '/state') {
+        let body: unknown;
+        try { body = await req.json(); }
+        catch { return new Response('Invalid JSON', { status: 400 }); }
+        if (!isValidStatePayload(body)) return new Response('Invalid payload', { status: 400 });
+
+        state.lastState   = body;
+        state.lastStateAt = new Date();
+        state.lastSeenAt  = new Date();
+        await store.saveState(body);
+        return Response.json({ ok: true });
       }
 
-      if (req.method === 'POST' && url.pathname === '/credentials') {
-        let body: any;
-        try { body = await req.json(); } catch {
-          return new Response('Invalid JSON', { status: 400 });
-        }
-        if (typeof body?.orgId !== 'string' || typeof body?.cookie !== 'string') {
-          return new Response('Missing orgId or cookie', { status: 400 });
-        }
-        await store.saveConfig({ orgId: body.orgId, cookie: body.cookie });
-        await onConnect();
+      if (req.method === 'POST' && url.pathname === '/heartbeat') {
+        state.lastSeenAt = new Date();
         return Response.json({ ok: true });
+      }
+
+      if (req.method === 'GET' && url.pathname === '/status') {
+        const f = classifyFreshness({
+          now:           new Date(),
+          lastStateAt:   state.lastStateAt,
+          lastSeenAt:    state.lastSeenAt,
+          warnAfterMin:  WARN_AFTER_MIN,
+          errorAfterMin: ERROR_AFTER_MIN,
+        });
+        return Response.json({
+          connected:   true,
+          lastStateAt: state.lastStateAt?.toISOString() ?? null,
+          lastSeenAt:  state.lastSeenAt?.toISOString()  ?? null,
+          freshness:   f.freshness,
+          dataAgeMin:  f.dataAgeMin,
+          liveAgeSec:  f.liveAgeSec,
+          situation:   state.lastState?.situation.key ?? null,
+        });
       }
 
       return new Response('Not Found', { status: 404 });

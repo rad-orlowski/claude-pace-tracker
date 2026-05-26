@@ -1,0 +1,11 @@
+{
+  "entry": [
+    "src/userscript/main.js",
+    "src/mcp/src/index.ts"
+  ],
+  "project": [
+    "src/**/*.js",
+    "src/**/*.ts"
+  ],
+  "ignoreExportsUsedInFile": true
+}

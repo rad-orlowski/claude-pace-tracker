@@ -1,26 +1,4 @@
-const WARN = (...a) => console.warn("[claude-pace]", ...a);
-
-function gmFetch(
-	url,
-	{ method = "GET", headers = {}, body = undefined, timeoutMs = 1500 } = {},
-) {
-	return new Promise((resolve, reject) => {
-		if (typeof GM_xmlhttpRequest === "undefined") {
-			reject(new Error("GM_xmlhttpRequest unavailable"));
-			return;
-		}
-		GM_xmlhttpRequest({
-			method,
-			url,
-			headers,
-			data: body,
-			timeout: timeoutMs,
-			onload: (r) => resolve(r),
-			onerror: () => reject(new Error("network error")),
-			ontimeout: () => reject(new Error("timeout")),
-		});
-	});
-}
+import { gmFetch } from "../../gm-fetch.js";
 
 async function fetchMcpStatus(port) {
 	try {
@@ -30,7 +8,7 @@ async function fetchMcpStatus(port) {
 		if (r.status < 200 || r.status >= 300) return null;
 		return JSON.parse(r.responseText);
 	} catch {
-		return null;
+		/* intentional — MCP not reachable */
 	}
 }
 

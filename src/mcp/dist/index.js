@@ -20295,25 +20295,33 @@ import { homedir } from "node:os";
 
 // src/payload.ts
 var SCHEMA_VERSION = 1;
-var TRENDS = new Set(["over", "under", "on-track", "sleep", "catch-up"]);
+var TRENDS = new Set([
+  "over",
+  "under",
+  "on-track",
+  "sleep",
+  "catch-up"
+]);
 function isRawBucket(x) {
   return !!x && typeof x === "object" && typeof x.utilization === "number" && typeof x.resets_at === "string";
+}
+function hasAllRawBuckets(raw) {
+  if (!raw || typeof raw !== "object")
+    return false;
+  const r = raw;
+  return isRawBucket(r.seven_day) && isRawBucket(r.seven_day_sonnet) && isRawBucket(r.five_hour);
+}
+function isValidSituation(sit) {
+  if (!sit || typeof sit !== "object")
+    return false;
+  const s = sit;
+  return typeof s.message === "string" && TRENDS.has(s.trend);
 }
 function isValidStatePayload(x) {
   if (!x || typeof x !== "object")
     return false;
   const p = x;
-  if (p.schemaVersion !== SCHEMA_VERSION)
-    return false;
-  if (typeof p.pushedAt !== "string")
-    return false;
-  if (!p.raw || !isRawBucket(p.raw.seven_day) || !isRawBucket(p.raw.seven_day_sonnet) || !isRawBucket(p.raw.five_hour))
-    return false;
-  if (!p.computed)
-    return false;
-  if (!p.situation || typeof p.situation.message !== "string" || !TRENDS.has(p.situation.trend))
-    return false;
-  return true;
+  return p.schemaVersion === SCHEMA_VERSION && typeof p.pushedAt === "string" && hasAllRawBuckets(p.raw) && !!p.computed && isValidSituation(p.situation);
 }
 
 // src/store.ts
@@ -20321,9 +20329,8 @@ async function readState(path) {
   try {
     const raw = JSON.parse(await readFile(path, "utf8"));
     return isValidStatePayload(raw) ? raw : null;
-  } catch {
-    return null;
-  }
+  } catch {}
+  return null;
 }
 async function writeState(path, data) {
   await mkdir(dirname(path), { recursive: true });
@@ -20405,8 +20412,7 @@ function startHttpSidecar(port, store, state) {
       }
       return new Response("Not Found", { status: 404 });
     },
-    error(err) {
-      console.error("[pace-mcp] HTTP error:", err);
+    error() {
       return new Response("Internal Error", { status: 500 });
     }
   });
@@ -20414,17 +20420,12 @@ function startHttpSidecar(port, store, state) {
 
 // src/index.ts
 var HTTP_PORT = Number(process.env.PACE_HTTP_PORT ?? "4299");
-var state = { lastState: null, lastStateAt: null, lastSeenAt: null };
-function freshnessNow() {
-  return classifyFreshness({
-    now: new Date,
-    lastStateAt: state.lastStateAt,
-    lastSeenAt: state.lastSeenAt,
-    warnAfterMin: WARN_AFTER_MIN,
-    errorAfterMin: ERROR_AFTER_MIN
-  });
-}
-async function getPaceStatsHandler(s = state) {
+var state = {
+  lastState: null,
+  lastStateAt: null,
+  lastSeenAt: null
+};
+function getPaceStatsHandler(s = state) {
   const f = classifyFreshness({
     now: new Date,
     lastStateAt: s.lastStateAt,
@@ -20433,7 +20434,11 @@ async function getPaceStatsHandler(s = state) {
     errorAfterMin: ERROR_AFTER_MIN
   });
   const body = {
-    status: { freshness: f.freshness, dataAgeMin: f.dataAgeMin, liveAgeSec: f.liveAgeSec },
+    status: {
+      freshness: f.freshness,
+      dataAgeMin: f.dataAgeMin,
+      liveAgeSec: f.liveAgeSec
+    },
     payload: s.lastState
   };
   const isError = f.freshness === "stale-error";
@@ -20442,7 +20447,7 @@ async function getPaceStatsHandler(s = state) {
     ...isError ? { isError: true } : {}
   };
 }
-async function getSituationHandler(s = state) {
+function getSituationHandler(s = state) {
   const f = classifyFreshness({
     now: new Date,
     lastStateAt: s.lastStateAt,
@@ -20451,7 +20456,14 @@ async function getSituationHandler(s = state) {
     errorAfterMin: ERROR_AFTER_MIN
   });
   if (f.freshness === "no-data" || !s.lastState) {
-    return { content: [{ type: "text", text: "No data yet — open claude.ai/settings/usage to start pushing pace state." }] };
+    return {
+      content: [
+        {
+          type: "text",
+          text: "No data yet — open claude.ai/settings/usage to start pushing pace state."
+        }
+      ]
+    };
   }
   const { situation } = s.lastState;
   const suffix = f.freshness === "stale-error" ? `[stale: ${f.dataAgeMin}m ago — open claude.ai/settings/usage to refresh]` : f.freshness === "stale-warning" ? `[stale: ${f.dataAgeMin}m ago]` : `[data: ${f.dataAgeMin}m ago]`;
@@ -20483,9 +20495,8 @@ main().catch((err) => {
 });
 export {
   getSituationHandler,
-  getPaceStatsHandler,
-  freshnessNow
+  getPaceStatsHandler
 };
 
-//# debugId=0711CD16849AE97D64756E2164756E21
+//# debugId=B4116DA4AF97F55064756E2164756E21
 //# sourceMappingURL=index.js.map

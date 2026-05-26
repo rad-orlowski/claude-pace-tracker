@@ -108,9 +108,14 @@ bun run build          # builds userscript + MCP server
 # Userscript tests
 bun test
 bun test tests/math.test.mjs   # single test file
+bun test tests/render.test.ts  # DOM manipulation tests
+bun test tests/lifecycle.test.ts # SPA navigation tests
 
 # MCP server tests
 cd src/mcp && bun test
+
+# DOM Testing
+The project includes DOM testing infrastructure using Happy-DOM for testing browser-side DOM manipulation. See [tests/DOM_TESTING.md](tests/DOM_TESTING.md) for detailed documentation on the DOM testing architecture, patterns, and current status.
 ```
 
 `build.ts` bundles `src/userscript/main.js` as an IIFE, prepends the userscript header from `meta.txt`, and writes both readable and minified outputs to `dist/`. The MCP server is bundled into `src/mcp/dist/index.js`.

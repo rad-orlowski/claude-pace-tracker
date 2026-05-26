@@ -17,9 +17,11 @@
 // ==/UserScript==
 
 (() => {
-  // src/userscript/capture.js
+  // src/userscript/log.js
   var LOG = (...args) => console.log("[claude-pace]", ...args);
   var WARN = (...args) => console.warn("[claude-pace]", ...args);
+
+  // src/userscript/capture.js
   var USAGE_RE = /\/api\/organizations\/([0-9a-f-]+)\/usage(\?|$)/;
   var capturedOrgId = null;
   function getCapturedOrgId() {
@@ -66,8 +68,6 @@
   }
 
   // src/userscript/polling.js
-  var LOG2 = (...args) => console.log("[claude-pace]", ...args);
-  var WARN2 = (...args) => console.warn("[claude-pace]", ...args);
   var pollTimer = null;
   var lastJson = null;
   function isPolling() {
@@ -84,10 +84,10 @@
       return;
     const orgId = getCapturedOrgId() || getOrgIdFromCookie();
     if (!orgId) {
-      LOG2("cannot start polling — orgId not yet known");
+      LOG("cannot start polling — orgId not yet known");
       return;
     }
-    LOG2("starting /usage poll every", cfg.pollIntervalMin, "min for org", orgId);
+    LOG("starting /usage poll every", cfg.pollIntervalMin, "min for org", orgId);
     pollTimer = setInterval(_pollUsage, cfg.pollIntervalMin * 60000);
     if (!lastJson)
       _pollUsage();
@@ -95,7 +95,7 @@
   function stopPolling() {
     if (!pollTimer)
       return;
-    LOG2("stopping /usage poll");
+    LOG("stopping /usage poll");
     clearInterval(pollTimer);
     pollTimer = null;
   }
@@ -103,12 +103,15 @@
     const orgId = getCapturedOrgId();
     if (!orgId)
       return;
-    LOG2("polling /usage");
+    LOG("polling /usage");
     window.fetch(`/api/organizations/${orgId}/usage`, {
-      headers: { "content-type": "application/json", "anthropic-client-platform": "web_claude_ai" },
+      headers: {
+        "content-type": "application/json",
+        "anthropic-client-platform": "web_claude_ai"
+      },
       credentials: "include"
     }).catch((e) => {
-      WARN2("poll fetch threw:", e);
+      WARN("poll fetch threw:", e);
     });
   }
 
@@ -480,7 +483,7 @@
       return lucideLoadPromise;
     lucideLoadPromise = new Promise((resolve, reject) => {
       const s = document.createElement("script");
-      s.src = "https://unpkg.com/lucide@latest/dist/umd/lucide.min.js";
+      s.src = "https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js";
       s.onload = () => {
         lucideReady = true;
         resolve();
@@ -790,6 +793,10 @@
   var renderRetryTimer = null;
   var RENDER_RETRY_MS = 100;
   var RENDER_RETRY_MAX = 30;
+  function clearRenderRetry() {
+    clearTimeout(renderRetryTimer);
+    renderRetryTimer = null;
+  }
   function appendStat(target, iconName, value) {
     if (isLucideReady()) {
       target.appendChild(makeLucideIcon(iconName, 12));
@@ -841,7 +848,7 @@
       return true;
     }
     pill.style.display = "inline-flex";
-    pill.innerHTML = "";
+    pill.textContent = "";
     Object.assign(pill.style, { padding: "2px 8px", gap: "4px", overflow: "" });
     let styles = null;
     if (bucketKey === "five_hour") {
@@ -961,6 +968,10 @@
   // src/userscript/ui/components/mcp-section.js
   function gmFetch(url, { method = "GET", headers = {}, body = undefined, timeoutMs = 1500 } = {}) {
     return new Promise((resolve, reject) => {
+      if (typeof GM_xmlhttpRequest === "undefined") {
+        reject(new Error("GM_xmlhttpRequest unavailable"));
+        return;
+      }
       GM_xmlhttpRequest({
         method,
         url,
@@ -975,7 +986,9 @@
   }
   async function fetchMcpStatus(port) {
     try {
-      const r = await gmFetch(`http://localhost:${port}/status`, { timeoutMs: 1500 });
+      const r = await gmFetch(`http://localhost:${port}/status`, {
+        timeoutMs: 1500
+      });
       if (r.status < 200 || r.status >= 300)
         return null;
       return JSON.parse(r.responseText);
@@ -996,17 +1009,40 @@
   }
   function renderMcpSection(container, getCfg2, applySettings) {
     const section = document.createElement("div");
-    Object.assign(section.style, { marginTop: "16px", borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "12px" });
+    Object.assign(section.style, {
+      marginTop: "16px",
+      borderTop: "1px solid rgba(255,255,255,0.08)",
+      paddingTop: "12px"
+    });
     const label = document.createElement("div");
     label.textContent = "Claude Code integration";
-    Object.assign(label.style, { fontSize: "11px", fontWeight: "600", color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "8px" });
+    Object.assign(label.style, {
+      fontSize: "11px",
+      fontWeight: "600",
+      color: "rgba(255,255,255,0.45)",
+      textTransform: "uppercase",
+      letterSpacing: "0.06em",
+      marginBottom: "8px"
+    });
     section.appendChild(label);
     const statusEl = document.createElement("div");
-    Object.assign(statusEl.style, { fontSize: "12px", color: "rgba(255,255,255,0.6)", marginBottom: "8px" });
+    Object.assign(statusEl.style, {
+      fontSize: "12px",
+      color: "rgba(255,255,255,0.6)",
+      marginBottom: "8px"
+    });
     statusEl.textContent = "Checking…";
     section.appendChild(statusEl);
     const toggleRow = document.createElement("label");
-    Object.assign(toggleRow.style, { display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "#d1d5db", cursor: "pointer", userSelect: "none" });
+    Object.assign(toggleRow.style, {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      fontSize: "12px",
+      color: "#d1d5db",
+      cursor: "pointer",
+      userSelect: "none"
+    });
     const toggle = document.createElement("input");
     toggle.type = "checkbox";
     toggle.checked = getCfg2().mcpPushEnabled !== false;
@@ -1051,6 +1087,10 @@
       return;
     clearTimeout(_gearRetryTimer);
     _gearRetryTimer = setTimeout(() => tryInjectGear(getCfg2, applySettings, attempt + 1), 100);
+  }
+  function clearGearRetry() {
+    clearTimeout(_gearRetryTimer);
+    _gearRetryTimer = null;
   }
   function _injectSettingsGear(getCfg2, applySettings) {
     if (document.getElementById(GEAR_ID))
@@ -1334,7 +1374,7 @@
         inp.value = CFG_DEFAULTS[k];
     };
     saveBtn.onclick = () => {
-      const newCfg = {};
+      const newCfg = { ...cfg };
       for (const [k, inp] of Object.entries(inputs)) {
         const def = CFG_DEFAULTS[k];
         newCfg[k] = Math.min(Math.max(parseInt(inp.value, 10) || def, +inp.min), +inp.max);
@@ -1351,10 +1391,8 @@
   }
 
   // src/userscript/lifecycle.js
-  var MASK_CLASS2 = "__claude-pace-mask";
-  var LOG3 = (...args) => console.log("[claude-pace]", ...args);
   function installLifecycle(onRerender, onResumePolling, onStopPolling, onResumeHeartbeat, onStopHeartbeat) {
-    setInterval(onRerender, 30000);
+    let rerenderInterval = setInterval(onRerender, 30000);
     const wrapHistory = (key) => {
       const orig = history[key];
       history[key] = function() {
@@ -1369,12 +1407,17 @@
     function handleNavigation() {
       const onUsagePage = /\/settings\/usage(\b|\/)/.test(location.pathname);
       if (!onUsagePage) {
-        LOG3("navigated away from /settings/usage — teardown");
+        LOG("navigated away from /settings/usage — teardown");
         teardownAll();
+        clearInterval(rerenderInterval);
+        clearRenderRetry();
+        clearGearRetry();
         onStopPolling();
         onStopHeartbeat?.();
       } else {
-        LOG3("navigated onto /settings/usage");
+        LOG("navigated onto /settings/usage");
+        clearInterval(rerenderInterval);
+        rerenderInterval = setInterval(onRerender, 30000);
         onResumePolling();
         onResumeHeartbeat?.();
         onRerender();
@@ -1384,7 +1427,7 @@
       const gear = document.getElementById(GEAR_ID);
       if (gear)
         gear.remove();
-      document.querySelectorAll("." + MARKER_CLASS + ", ." + PILL_CLASS + ", ." + MASK_CLASS2 + ", ." + SUMMARY_CLASS + ", ." + DAY_DIV_CLASS).forEach((n) => n.remove());
+      document.querySelectorAll("." + MARKER_CLASS + ", ." + PILL_CLASS + ", ." + MASK_CLASS + ", ." + SUMMARY_CLASS + ", ." + DAY_DIV_CLASS).forEach((n) => n.remove());
       document.querySelectorAll('[role="progressbar"]').forEach((bar) => {
         bar.style.background = "";
         bar.style.border = "";
@@ -1421,7 +1464,7 @@
     const sMs = 5 * 3600 * 1000;
     const allWElapsed = activeElapsedPctOf(nowMs, allRA, wMs, cfg.activeStartH, cfg.activeEndH);
     const sonWElapsed = activeElapsedPctOf(nowMs, sonRA, wMs, cfg.activeStartH, cfg.activeEndH);
-    const sessElapsed = activeElapsedPctOf(nowMs, sessRA, sMs, cfg.activeStartH, cfg.activeEndH);
+    const sessElapsed = elapsedPctOf(nowMs, sessRA, sMs);
     const { key, params } = classifySituation(signals2, cfg);
     const message = (SITUATION_MESSAGES[key] || (() => key))(params);
     const win = signals2.window;
@@ -1429,26 +1472,60 @@
       schemaVersion: 1,
       pushedAt: new Date(nowMs).toISOString(),
       raw: {
-        seven_day: { utilization: json.seven_day.utilization, resets_at: json.seven_day.resets_at },
-        seven_day_sonnet: { utilization: json.seven_day_sonnet.utilization, resets_at: json.seven_day_sonnet.resets_at },
-        five_hour: { utilization: json.five_hour.utilization, resets_at: json.five_hour.resets_at }
+        seven_day: {
+          utilization: json.seven_day.utilization,
+          resets_at: json.seven_day.resets_at
+        },
+        seven_day_sonnet: {
+          utilization: json.seven_day_sonnet.utilization,
+          resets_at: json.seven_day_sonnet.resets_at
+        },
+        five_hour: {
+          utilization: json.five_hour.utilization,
+          resets_at: json.five_hour.resets_at
+        }
       },
       computed: {
         window: win,
         resetInH: signals2.resetInH,
         daysLeft: signals2.daysLeft,
-        session: { utilizationPct: signals2.session.dp + sessElapsed, deltaPp: signals2.session.dp, elapsedPct: sessElapsed, trend: trendOf(signals2.session.sev, win, signals2.session.dp) },
-        allWeekly: { utilizationPct: signals2.allWeekly.pct, deltaPp: signals2.allWeekly.dp, elapsedPct: allWElapsed, trend: trendOf(signals2.allWeekly.sev, win, signals2.allWeekly.dp) },
-        allDaily: { deltaPp: signals2.allDaily.dp, trend: trendOf(signals2.allDaily.sev, win, signals2.allDaily.dp) },
-        sonnetWeekly: { utilizationPct: signals2.sonnetWeekly.pct, deltaPp: signals2.sonnetWeekly.dp, elapsedPct: sonWElapsed, trend: trendOf(signals2.sonnetWeekly.sev, win, signals2.sonnetWeekly.dp) },
-        sonnetDaily: { deltaPp: signals2.sonnetDaily.dp, trend: trendOf(signals2.sonnetDaily.sev, win, signals2.sonnetDaily.dp) }
+        session: {
+          utilizationPct: signals2.session.dp + sessElapsed,
+          deltaPp: signals2.session.dp,
+          elapsedPct: sessElapsed,
+          trend: trendOf(signals2.session.sev, win, signals2.session.dp)
+        },
+        allWeekly: {
+          utilizationPct: signals2.allWeekly.pct,
+          deltaPp: signals2.allWeekly.dp,
+          elapsedPct: allWElapsed,
+          trend: trendOf(signals2.allWeekly.sev, win, signals2.allWeekly.dp)
+        },
+        allDaily: {
+          deltaPp: signals2.allDaily.dp,
+          trend: trendOf(signals2.allDaily.sev, win, signals2.allDaily.dp)
+        },
+        sonnetWeekly: {
+          utilizationPct: signals2.sonnetWeekly.pct,
+          deltaPp: signals2.sonnetWeekly.dp,
+          elapsedPct: sonWElapsed,
+          trend: trendOf(signals2.sonnetWeekly.sev, win, signals2.sonnetWeekly.dp)
+        },
+        sonnetDaily: {
+          deltaPp: signals2.sonnetDaily.dp,
+          trend: trendOf(signals2.sonnetDaily.sev, win, signals2.sonnetDaily.dp)
+        }
       },
-      situation: { key, params, message, trend: trendOf(signals2.allWeekly.sev, win, signals2.allWeekly.dp) }
+      situation: {
+        key,
+        params,
+        message,
+        trend: trendOf(signals2.allWeekly.sev, win, signals2.allWeekly.dp)
+      }
     };
   }
 
   // src/userscript/mcp-push.js
-  var LOG4 = (...args) => console.log("[claude-pace]", ...args);
   var _lastPushTs = 0;
   var _heartbeatTimer = null;
   function gmFetch2(url, { method = "GET", headers = {}, body = undefined, timeoutMs = 1500 } = {}) {
@@ -1486,7 +1563,7 @@
         body: JSON.stringify(payload)
       });
     } catch (e) {
-      LOG4("mcp push skipped:", e?.message ?? e);
+      LOG("mcp push skipped:", e?.message ?? e);
     }
   }
   function startHeartbeat(cfg) {
@@ -1510,8 +1587,6 @@
   }
 
   // src/userscript/main.js
-  var LOG5 = (...args) => console.log("[claude-pace]", ...args);
-  var WARN3 = (...args) => console.warn("[claude-pace]", ...args);
   function onUsage(json) {
     if (!json || typeof json !== "object")
       return;
@@ -1542,15 +1617,15 @@
     if (last)
       renderAllMarkers(last, getCfg());
   }
-  LOG5("script loaded, version 4.0.0");
+  LOG("script loaded, version 4.0.0");
   installCapture(onUsage, () => {
     if (!isPolling())
       startPolling(getCfg());
   });
   function init() {
-    LOG5("init() — installing UI");
+    LOG("init() — installing UI");
     injectPaceStyles();
-    ensureLucide().catch((e) => WARN3("Lucide load failed:", e));
+    ensureLucide().catch((e) => WARN("Lucide load failed:", e));
     installLifecycle(rerenderMarkersFromLast, () => startPolling(getCfg()), stopPolling, () => startHeartbeat(getCfg()), stopHeartbeat);
     startPolling(getCfg());
     startHeartbeat(getCfg());

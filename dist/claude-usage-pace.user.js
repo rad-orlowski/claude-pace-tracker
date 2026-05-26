@@ -239,6 +239,8 @@
     return (n > 0 ? "+" : "") + n + "%";
   }
   // src/common/signals.ts
+  var OVER = "over";
+  var UNDER = "under";
   var SITUATION_MESSAGES = {
     CRITICAL_LIMIT: (p) => `${p.model} weekly limit at ${p.pct}% — nearly exhausted. Minimise token use.`,
     RESET_TIGHT: (p) => `Reset in ${p.resetInH}h with ${p.pct}% used. Tight — wrap up heavy tasks or wait for the reset.`,
@@ -296,101 +298,224 @@
     const win = timeWindowOf(new Date(now), cfg.activeStartH, cfg.activeEndH, cfg.sleepStartH);
     return {
       session: { dp: sessDp, sev: severityOf(sessDp, bS) },
-      allWeekly: { dp: allWDp, sev: severityOf(allWDp, bW), pct: allB.utilization },
+      allWeekly: {
+        dp: allWDp,
+        sev: severityOf(allWDp, bW),
+        pct: allB.utilization
+      },
       allDaily: { dp: allDDp, sev: severityOf(allDDp, bW) },
-      sonnetWeekly: { dp: sonWDp, sev: severityOf(sonWDp, bW), pct: sonB.utilization },
+      sonnetWeekly: {
+        dp: sonWDp,
+        sev: severityOf(sonWDp, bW),
+        pct: sonB.utilization
+      },
       sonnetDaily: { dp: sonDDp, sev: severityOf(sonDDp, bW) },
       window: win,
       resetInH,
       daysLeft
     };
   }
-  function classifySituation(signals, cfg) {
-    const { session, allWeekly, allDaily, sonnetWeekly, sonnetDaily, window: win, resetInH, daysLeft } = signals;
-    if (allWeekly.pct > 90)
-      return { key: "CRITICAL_LIMIT", params: { model: "All-models", pct: Math.round(allWeekly.pct) } };
-    if (sonnetWeekly.pct > 90)
-      return { key: "CRITICAL_LIMIT", params: { model: "Sonnet", pct: Math.round(sonnetWeekly.pct) } };
-    if (resetInH < 4 && (allWeekly.pct > 75 || sonnetWeekly.pct > 75))
-      return { key: "RESET_TIGHT", params: {
-        resetInH: resetInH.toFixed(1),
-        pct: Math.round(Math.max(allWeekly.pct, sonnetWeekly.pct))
-      } };
-    if (resetInH < 4 && allWeekly.pct < 40 && sonnetWeekly.pct < 40)
-      return { key: "RESET_OPPORTUNITY", params: {
-        resetInH: resetInH.toFixed(1),
-        pctLeft: Math.round(100 - allWeekly.pct)
-      } };
-    if (win === "sleep")
-      return { key: "SLEEP", params: {
-        allWDp: signedPp(allWeekly.dp),
-        sonWDp: signedPp(sonnetWeekly.dp)
-      } };
-    if (win === "bonus" && (allDaily.sev === "under" || sonnetDaily.sev === "under")) {
-      const dayDp = Math.round(Math.abs(Math.min(allDaily.dp, sonnetDaily.dp)));
-      return { key: "BONUS_CATCH_UP", params: { dayDp } };
-    }
-    if (win === "bonus") {
-      if (allWeekly.sev === "over" && sonnetWeekly.sev === "over")
-        return { key: "BOTH_WEEKLY_OVER", params: { allWDp: Math.round(allWeekly.dp), sonWDp: Math.round(sonnetWeekly.dp) } };
-      if (allWeekly.sev === "over" && sonnetWeekly.sev === "under")
-        return { key: "ALL_OVER_SONNET_UNDER", params: { allWDp: Math.round(allWeekly.dp) } };
-      if (allWeekly.sev === "over")
-        return { key: "ALL_OVER", params: { allWDp: Math.round(allWeekly.dp) } };
-      if (sonnetWeekly.sev === "over")
-        return { key: "SONNET_OVER", params: { sonWDp: Math.round(sonnetWeekly.dp) } };
-      return { key: "BONUS_OK", params: { allWDp: signedPp(allWeekly.dp) } };
-    }
-    if (allWeekly.sev === "over" && sonnetWeekly.sev === "over")
-      return { key: "BOTH_WEEKLY_OVER", params: {
-        allWDp: Math.round(allWeekly.dp),
-        sonWDp: Math.round(sonnetWeekly.dp)
-      } };
-    if (allWeekly.sev === "over" && allDaily.sev === "under")
-      return { key: "WEEKLY_OVER_CORRECTING", params: { model: "all-models", wDp: Math.round(allWeekly.dp) } };
-    if (sonnetWeekly.sev === "over" && sonnetDaily.sev === "under")
-      return { key: "WEEKLY_OVER_CORRECTING", params: { model: "Sonnet", wDp: Math.round(sonnetWeekly.dp) } };
-    if (allWeekly.sev === "over" && sonnetWeekly.sev === "under")
-      return { key: "ALL_OVER_SONNET_UNDER", params: { allWDp: Math.round(allWeekly.dp) } };
-    if (allWeekly.sev === "over")
-      return { key: "ALL_OVER", params: { allWDp: Math.round(allWeekly.dp) } };
-    if (sonnetWeekly.sev === "over")
-      return { key: "SONNET_OVER", params: { sonWDp: Math.round(sonnetWeekly.dp) } };
-    if (session.sev === "over" && allWeekly.sev === "under" && sonnetWeekly.sev === "under")
-      return { key: "SESSION_HOT_WEEKLY_SLACK", params: {
-        sessDp: Math.round(session.dp),
-        allWDp: Math.round(Math.abs(allWeekly.dp))
-      } };
-    if (session.sev === "over" && (allDaily.sev === "under" || sonnetDaily.sev === "under"))
-      return { key: "SESSION_HOT_DAILY_SLOW", params: { sessDp: Math.round(session.dp) } };
-    if (session.dp > cfg.bandSession * 2)
-      return { key: "SESSION_HOT", params: { sessDp: Math.round(session.dp) } };
-    if (allWeekly.sev === "under" && allDaily.sev === "over")
-      return { key: "WEEKLY_UNDER_RECOVERING", params: {
+  function isBothWeeklyOver(s) {
+    return s.allWeekly.sev === OVER && s.sonnetWeekly.sev === OVER;
+  }
+  function isAllOverSonnetUnder(s) {
+    return s.allWeekly.sev === OVER && s.sonnetWeekly.sev === UNDER;
+  }
+  function isAllOver(s) {
+    return s.allWeekly.sev === OVER;
+  }
+  function isSonnetOver(s) {
+    return s.sonnetWeekly.sev === OVER;
+  }
+  function isAnyDailyUnder(s) {
+    return s.allDaily.sev === UNDER || s.sonnetDaily.sev === UNDER;
+  }
+  function isBothWeeklyUnder(s) {
+    return s.allWeekly.sev === UNDER && s.sonnetWeekly.sev === UNDER;
+  }
+  var ACTIVE_RULES = [
+    {
+      key: "BOTH_WEEKLY_OVER",
+      test: isBothWeeklyOver,
+      params: (s) => ({
+        allWDp: Math.round(s.allWeekly.dp),
+        sonWDp: Math.round(s.sonnetWeekly.dp)
+      })
+    },
+    {
+      key: "WEEKLY_OVER_CORRECTING",
+      test: (s) => s.allWeekly.sev === OVER && s.allDaily.sev === UNDER,
+      params: (s) => ({ model: "all-models", wDp: Math.round(s.allWeekly.dp) })
+    },
+    {
+      key: "WEEKLY_OVER_CORRECTING",
+      test: (s) => s.sonnetWeekly.sev === OVER && s.sonnetDaily.sev === UNDER,
+      params: (s) => ({ model: "Sonnet", wDp: Math.round(s.sonnetWeekly.dp) })
+    },
+    {
+      key: "ALL_OVER_SONNET_UNDER",
+      test: isAllOverSonnetUnder,
+      params: (s) => ({ allWDp: Math.round(s.allWeekly.dp) })
+    },
+    {
+      key: "ALL_OVER",
+      test: isAllOver,
+      params: (s) => ({ allWDp: Math.round(s.allWeekly.dp) })
+    },
+    {
+      key: "SONNET_OVER",
+      test: isSonnetOver,
+      params: (s) => ({ sonWDp: Math.round(s.sonnetWeekly.dp) })
+    },
+    {
+      key: "SESSION_HOT_WEEKLY_SLACK",
+      test: (s) => s.session.sev === OVER && isBothWeeklyUnder(s),
+      params: (s) => ({
+        sessDp: Math.round(s.session.dp),
+        allWDp: Math.round(Math.abs(s.allWeekly.dp))
+      })
+    },
+    {
+      key: "SESSION_HOT_DAILY_SLOW",
+      test: (s) => s.session.sev === OVER && isAnyDailyUnder(s),
+      params: (s) => ({ sessDp: Math.round(s.session.dp) })
+    },
+    {
+      key: "SESSION_HOT",
+      test: (s, cfg) => s.session.dp > cfg.bandSession * 2,
+      params: (s) => ({ sessDp: Math.round(s.session.dp) })
+    },
+    {
+      key: "WEEKLY_UNDER_RECOVERING",
+      test: (s) => s.allWeekly.sev === UNDER && s.allDaily.sev === OVER,
+      params: (s) => ({
         model: "all-models",
-        wDp: Math.round(Math.abs(allWeekly.dp)),
-        daysLeft
-      } };
-    if (sonnetWeekly.sev === "under" && sonnetDaily.sev === "over")
-      return { key: "WEEKLY_UNDER_RECOVERING", params: {
+        wDp: Math.round(Math.abs(s.allWeekly.dp)),
+        daysLeft: s.daysLeft
+      })
+    },
+    {
+      key: "WEEKLY_UNDER_RECOVERING",
+      test: (s) => s.sonnetWeekly.sev === UNDER && s.sonnetDaily.sev === OVER,
+      params: (s) => ({
         model: "Sonnet",
-        wDp: Math.round(Math.abs(sonnetWeekly.dp)),
-        daysLeft
-      } };
-    if (allWeekly.sev === "under" && sonnetWeekly.sev === "under")
-      return { key: "BOTH_WEEKLY_UNDER", params: {
-        allWDp: Math.round(Math.abs(allWeekly.dp)),
-        sonWDp: Math.round(Math.abs(sonnetWeekly.dp))
-      } };
-    if (allDaily.sev === "under" || sonnetDaily.sev === "under") {
-      const dayDp = Math.round(Math.abs(Math.min(allDaily.dp, sonnetDaily.dp)));
-      return { key: "DAILY_BEHIND", params: { dayDp, activeEndH: cfg.activeEndH } };
+        wDp: Math.round(Math.abs(s.sonnetWeekly.dp)),
+        daysLeft: s.daysLeft
+      })
+    },
+    {
+      key: "BOTH_WEEKLY_UNDER",
+      test: isBothWeeklyUnder,
+      params: (s) => ({
+        allWDp: Math.round(Math.abs(s.allWeekly.dp)),
+        sonWDp: Math.round(Math.abs(s.sonnetWeekly.dp))
+      })
+    },
+    {
+      key: "DAILY_BEHIND",
+      test: isAnyDailyUnder,
+      params: (s, cfg) => ({
+        dayDp: Math.round(Math.abs(Math.min(s.allDaily.dp, s.sonnetDaily.dp))),
+        activeEndH: cfg.activeEndH
+      })
+    },
+    {
+      key: "DAILY_OK_WEEKLY_LAGGING",
+      test: (s) => s.allWeekly.sev === UNDER,
+      params: (s) => ({ allWDp: Math.round(Math.abs(s.allWeekly.dp)) })
+    },
+    {
+      key: "SONNET_LIGHT",
+      test: (s) => s.sonnetWeekly.sev === UNDER,
+      params: (s) => ({ sonWDp: Math.round(Math.abs(s.sonnetWeekly.dp)) })
     }
-    if (allWeekly.sev === "under")
-      return { key: "DAILY_OK_WEEKLY_LAGGING", params: { allWDp: Math.round(Math.abs(allWeekly.dp)) } };
-    if (sonnetWeekly.sev === "under")
-      return { key: "SONNET_LIGHT", params: { sonWDp: Math.round(Math.abs(sonnetWeekly.dp)) } };
-    return { key: "ALL_CLEAR", params: {} };
+  ];
+  var BONUS_RULES = [
+    {
+      key: "BOTH_WEEKLY_OVER",
+      test: isBothWeeklyOver,
+      params: (s) => ({
+        allWDp: Math.round(s.allWeekly.dp),
+        sonWDp: Math.round(s.sonnetWeekly.dp)
+      })
+    },
+    {
+      key: "ALL_OVER_SONNET_UNDER",
+      test: isAllOverSonnetUnder,
+      params: (s) => ({ allWDp: Math.round(s.allWeekly.dp) })
+    },
+    {
+      key: "ALL_OVER",
+      test: isAllOver,
+      params: (s) => ({ allWDp: Math.round(s.allWeekly.dp) })
+    },
+    {
+      key: "SONNET_OVER",
+      test: isSonnetOver,
+      params: (s) => ({ sonWDp: Math.round(s.sonnetWeekly.dp) })
+    }
+  ];
+  function firstMatch(rules, s, cfg) {
+    for (const r of rules) {
+      if (r.test(s, cfg))
+        return { key: r.key, params: r.params(s, cfg) };
+    }
+    return null;
+  }
+  function classifySituation(signals, cfg) {
+    const {
+      allWeekly,
+      sonnetWeekly,
+      allDaily,
+      sonnetDaily,
+      window: win,
+      resetInH
+    } = signals;
+    if (allWeekly.pct > 90)
+      return {
+        key: "CRITICAL_LIMIT",
+        params: { model: "All-models", pct: Math.round(allWeekly.pct) }
+      };
+    if (sonnetWeekly.pct > 90)
+      return {
+        key: "CRITICAL_LIMIT",
+        params: { model: "Sonnet", pct: Math.round(sonnetWeekly.pct) }
+      };
+    if (resetInH < 4 && (allWeekly.pct > 75 || sonnetWeekly.pct > 75))
+      return {
+        key: "RESET_TIGHT",
+        params: {
+          resetInH: resetInH.toFixed(1),
+          pct: Math.round(Math.max(allWeekly.pct, sonnetWeekly.pct))
+        }
+      };
+    if (resetInH < 4 && allWeekly.pct < 40 && sonnetWeekly.pct < 40)
+      return {
+        key: "RESET_OPPORTUNITY",
+        params: {
+          resetInH: resetInH.toFixed(1),
+          pctLeft: Math.round(100 - allWeekly.pct)
+        }
+      };
+    if (win === "sleep")
+      return {
+        key: "SLEEP",
+        params: {
+          allWDp: signedPp(allWeekly.dp),
+          sonWDp: signedPp(sonnetWeekly.dp)
+        }
+      };
+    if (win === "bonus") {
+      if (allDaily.sev === UNDER || sonnetDaily.sev === UNDER) {
+        const dayDp = Math.round(Math.abs(Math.min(allDaily.dp, sonnetDaily.dp)));
+        return { key: "BONUS_CATCH_UP", params: { dayDp } };
+      }
+      return firstMatch(BONUS_RULES, signals, cfg) ?? {
+        key: "BONUS_OK",
+        params: { allWDp: signedPp(allWeekly.dp) }
+      };
+    }
+    return firstMatch(ACTIVE_RULES, signals, cfg) ?? { key: "ALL_CLEAR", params: {} };
   }
   // src/userscript/ui/components/bar.js
   var BAR_COLORS = {
@@ -408,10 +533,26 @@
     while (cursor.getTime() < periodEnd) {
       const day = cursor.getTime();
       const windows = [
-        { start: day, end: day + activeStartH * 3600000, color: BAR_COLORS.sleep },
-        { start: day + activeStartH * 3600000, end: day + activeEndH * 3600000, color: BAR_COLORS.active },
-        { start: day + activeEndH * 3600000, end: day + sleepStartH * 3600000, color: BAR_COLORS.bonus },
-        { start: day + sleepStartH * 3600000, end: day + 24 * 3600000, color: BAR_COLORS.sleep }
+        {
+          start: day,
+          end: day + activeStartH * 3600000,
+          color: BAR_COLORS.sleep
+        },
+        {
+          start: day + activeStartH * 3600000,
+          end: day + activeEndH * 3600000,
+          color: BAR_COLORS.active
+        },
+        {
+          start: day + activeEndH * 3600000,
+          end: day + sleepStartH * 3600000,
+          color: BAR_COLORS.bonus
+        },
+        {
+          start: day + sleepStartH * 3600000,
+          end: day + 24 * 3600000,
+          color: BAR_COLORS.sleep
+        }
       ];
       for (const w of windows) {
         const lo = Math.max(w.start, periodStartMs);
@@ -804,7 +945,101 @@
     }
     target.appendChild(document.createTextNode(" " + Math.round(Math.abs(value)) + "%"));
   }
-  function renderMarkerAndPill(bucketKey, util, resetsAt, cfg) {
+  function positionMarker(marker, markerPct, band) {
+    const mLeft = Math.max(0, markerPct - band);
+    const mRight = Math.min(100, markerPct + band);
+    marker.style.left = mLeft.toFixed(2) + "%";
+    marker.style.width = (mRight - mLeft).toFixed(2) + "%";
+    marker.style.background = "rgba(245,197,66,0.18)";
+    marker.style.boxShadow = "none";
+    const lineEl = marker.querySelector("div");
+    const capEl = marker.querySelector("span");
+    if (mRight > mLeft) {
+      const nowPct = ((markerPct - mLeft) / (mRight - mLeft) * 100).toFixed(2) + "%";
+      if (lineEl)
+        lineEl.style.left = nowPct;
+      if (capEl)
+        capEl.style.left = nowPct;
+    }
+  }
+  function renderSessionPill(pill, util, elapsedPct, band) {
+    const dp = deltaPpOf(util, elapsedPct);
+    const sev = severityOf(dp, band);
+    pill.title = "Session pace vs time elapsed";
+    const styles = sev === "over" ? PILL_OVER : sev === "under" ? PILL_UNDER : PILL_NEUTRAL;
+    appendStat(pill, dirIconName(dp, band), dp);
+    return styles;
+  }
+  function renderSleepPill(pill, util, markerPct) {
+    const weekDp = deltaPpOf(util, markerPct);
+    pill.title = "Weekly pace vs end-of-active-day target";
+    appendStat(pill, "moon", weekDp);
+    return {
+      color: "#8899bb",
+      background: "rgba(136,153,187,0.1)",
+      border: "1px solid rgba(136,153,187,0.25)"
+    };
+  }
+  function renderBonusPill(pill, util, markerPct, band) {
+    const frozen = markerPct;
+    if (util < frozen) {
+      pill.title = `Below today's target — ${Math.round(frozen - util)}% to go`;
+      appendStat(pill, "arrow-up-right", frozen - util);
+      return {
+        color: "#e8b84a",
+        background: "rgba(232,184,74,0.12)",
+        border: "1px solid rgba(232,184,74,0.35)"
+      };
+    }
+    const dp = deltaPpOf(util, frozen);
+    const sev = severityOf(dp, band);
+    pill.title = "Weekly pace vs active-hours schedule";
+    const styles = sev === "over" ? PILL_OVER : PILL_NEUTRAL;
+    appendStat(pill, dirIconName(dp, band), dp);
+    return styles;
+  }
+  function makePillHalf(sev, band, dp, title, side) {
+    const s = sevStyle(sev);
+    const half = document.createElement("span");
+    half.className = "__claude-pace-pill-half";
+    half.title = title;
+    Object.assign(half.style, {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "4px",
+      padding: "2px 7px",
+      background: s.bg,
+      color: s.color,
+      borderTop: `1px solid ${s.borderC}`,
+      borderBottom: `1px solid ${s.borderC}`,
+      borderLeft: side === "left" ? `1px solid ${s.borderC}` : "1px solid rgba(0,0,0,0.12)",
+      borderRight: side === "right" ? `1px solid ${s.borderC}` : "1px solid rgba(0,0,0,0.12)",
+      borderRadius: side === "left" ? "999px 0 0 999px" : "0 999px 999px 0"
+    });
+    appendStat(half, dirIconName(dp, band), dp);
+    return half;
+  }
+  function renderActivePill(pill, util, elapsedPct, now, resetsAtMs, periodMs, band, cfg) {
+    const weekDp = deltaPpOf(util, elapsedPct);
+    const weekSev = severityOf(weekDp, band);
+    const todayExpected = todayEndExpectedPctOf(now, resetsAtMs, periodMs, cfg.activeEndH);
+    const todayDp = deltaPpOf(util, todayExpected);
+    const todaySev = severityOf(todayDp, band);
+    Object.assign(pill.style, {
+      padding: "0",
+      gap: "0",
+      overflow: "hidden",
+      background: "none",
+      border: ""
+    });
+    pill.appendChild(makePillHalf(weekSev, band, weekDp, "Weekly pace vs active-hours schedule", "left"));
+    pill.appendChild(makePillHalf(todaySev, band, todayDp, `Today's pace target (by ${cfg.activeEndH}:00)`, "right"));
+    if (isLucideReady())
+      renderLucideIcons(pill);
+    return null;
+  }
+  function renderMarkerAndPill(opts) {
+    const { bucketKey, util, resetsAt, cfg } = opts;
     const meta = BUCKET_MAP[bucketKey];
     if (!meta)
       return false;
@@ -826,21 +1061,7 @@
     const marker = ensureMarker(markerHost);
     if (bucketKey !== "five_hour")
       ensureDayDividers(markerHost, 7);
-    const mLeft = Math.max(0, markerPct - band);
-    const mRight = Math.min(100, markerPct + band);
-    marker.style.left = mLeft.toFixed(2) + "%";
-    marker.style.width = (mRight - mLeft).toFixed(2) + "%";
-    marker.style.background = "rgba(245,197,66,0.18)";
-    marker.style.boxShadow = "none";
-    const lineEl = marker.querySelector("div");
-    const capEl = marker.querySelector("span");
-    if (mRight > mLeft) {
-      const nowPct = ((markerPct - mLeft) / (mRight - mLeft) * 100).toFixed(2) + "%";
-      if (lineEl)
-        lineEl.style.left = nowPct;
-      if (capEl)
-        capEl.style.left = nowPct;
-    }
+    positionMarker(marker, markerPct, band);
     const pill = ensurePill(dom.usedLabel);
     const elapsedMs = now - periodStartMs;
     if (elapsedMs < SUPPRESS_PILL_BEFORE_MS) {
@@ -852,81 +1073,13 @@
     Object.assign(pill.style, { padding: "2px 8px", gap: "4px", overflow: "" });
     let styles = null;
     if (bucketKey === "five_hour") {
-      const dp = deltaPpOf(util, elapsedPct);
-      const sev = severityOf(dp, band);
-      pill.title = "Session pace vs time elapsed";
-      styles = sev === "over" ? PILL_OVER : sev === "under" ? PILL_UNDER : PILL_NEUTRAL;
-      appendStat(pill, dirIconName(dp, band), dp);
+      styles = renderSessionPill(pill, util, elapsedPct, band);
     } else if (win === "sleep") {
-      const weekDp = deltaPpOf(util, markerPct);
-      pill.title = "Weekly pace vs end-of-active-day target";
-      styles = { color: "#8899bb", background: "rgba(136,153,187,0.1)", border: "1px solid rgba(136,153,187,0.25)" };
-      appendStat(pill, "moon", weekDp);
+      styles = renderSleepPill(pill, util, markerPct);
     } else if (win === "bonus") {
-      const frozen = markerPct;
-      if (util < frozen) {
-        pill.title = `Below today's target — ${Math.round(frozen - util)}% to go`;
-        styles = { color: "#e8b84a", background: "rgba(232,184,74,0.12)", border: "1px solid rgba(232,184,74,0.35)" };
-        appendStat(pill, "arrow-up-right", frozen - util);
-      } else {
-        const dp = deltaPpOf(util, frozen);
-        const sev = severityOf(dp, band);
-        pill.title = "Weekly pace vs active-hours schedule";
-        styles = sev === "over" ? PILL_OVER : PILL_NEUTRAL;
-        appendStat(pill, dirIconName(dp, band), dp);
-      }
+      styles = renderBonusPill(pill, util, markerPct, band);
     } else {
-      const weekDp = deltaPpOf(util, elapsedPct);
-      const weekSev = severityOf(weekDp, band);
-      const todayExpected = todayEndExpectedPctOf(now, resetsAtMs, periodMs, cfg.activeEndH);
-      const todayDp = deltaPpOf(util, todayExpected);
-      const todaySev = severityOf(todayDp, band);
-      const ws = sevStyle(weekSev);
-      const ts = sevStyle(todaySev);
-      Object.assign(pill.style, {
-        padding: "0",
-        gap: "0",
-        overflow: "hidden",
-        background: "none",
-        border: ""
-      });
-      const lh = document.createElement("span");
-      lh.className = "__claude-pace-pill-half";
-      lh.title = "Weekly pace vs active-hours schedule";
-      Object.assign(lh.style, {
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "4px",
-        padding: "2px 7px",
-        background: ws.bg,
-        color: ws.color,
-        borderTop: `1px solid ${ws.borderC}`,
-        borderBottom: `1px solid ${ws.borderC}`,
-        borderLeft: `1px solid ${ws.borderC}`,
-        borderRight: "1px solid rgba(0,0,0,0.12)",
-        borderRadius: "999px 0 0 999px"
-      });
-      appendStat(lh, dirIconName(weekDp, band), weekDp);
-      pill.appendChild(lh);
-      const rh = document.createElement("span");
-      rh.className = "__claude-pace-pill-half";
-      rh.title = `Today's pace target (by ${cfg.activeEndH}:00)`;
-      Object.assign(rh.style, {
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "4px",
-        padding: "2px 7px",
-        background: ts.bg,
-        color: ts.color,
-        borderTop: `1px solid ${ts.borderC}`,
-        borderBottom: `1px solid ${ts.borderC}`,
-        borderRight: `1px solid ${ts.borderC}`,
-        borderRadius: "0 999px 999px 0"
-      });
-      appendStat(rh, dirIconName(todayDp, band), todayDp);
-      pill.appendChild(rh);
-      if (isLucideReady())
-        renderLucideIcons(pill);
+      styles = renderActivePill(pill, util, elapsedPct, now, resetsAtMs, periodMs, band, cfg);
     }
     if (styles)
       Object.assign(pill.style, styles);
@@ -938,7 +1091,12 @@
       const bucket = json && json[key];
       if (!bucket || bucket.utilization == null || bucket.resets_at == null)
         continue;
-      if (renderMarkerAndPill(key, bucket.utilization, bucket.resets_at, cfg))
+      if (renderMarkerAndPill({
+        bucketKey: key,
+        util: bucket.utilization,
+        resetsAt: bucket.resets_at,
+        cfg
+      }))
         renderedAny = true;
     }
     const signals2 = buildSignals(json, Date.now(), cfg);
@@ -965,7 +1123,7 @@
     document.head.appendChild(s);
   }
 
-  // src/userscript/ui/components/mcp-section.js
+  // src/userscript/gm-fetch.js
   function gmFetch(url, { method = "GET", headers = {}, body = undefined, timeoutMs = 1500 } = {}) {
     return new Promise((resolve, reject) => {
       if (typeof GM_xmlhttpRequest === "undefined") {
@@ -984,6 +1142,8 @@
       });
     });
   }
+
+  // src/userscript/ui/components/mcp-section.js
   async function fetchMcpStatus(port) {
     try {
       const r = await gmFetch(`http://localhost:${port}/status`, {
@@ -992,9 +1152,7 @@
       if (r.status < 200 || r.status >= 300)
         return null;
       return JSON.parse(r.responseText);
-    } catch {
-      return null;
-    }
+    } catch {}
   }
   function fmtAge(ms) {
     if (ms == null)
@@ -1092,6 +1250,190 @@
     clearTimeout(_gearRetryTimer);
     _gearRetryTimer = null;
   }
+  var S = {
+    overlay: {
+      position: "fixed",
+      inset: "0",
+      zIndex: "99999",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      background: "rgba(0,0,0,0.55)",
+      backdropFilter: "blur(2px)"
+    },
+    panel: {
+      background: "#1a1d24",
+      border: "1px solid rgba(255,255,255,0.1)",
+      borderRadius: "12px",
+      padding: "20px 24px",
+      minWidth: "340px",
+      boxShadow: "0 8px 40px rgba(0,0,0,0.6)",
+      fontFamily: "inherit",
+      color: "#e5e7eb"
+    },
+    header: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: "16px"
+    },
+    headerTitle: { fontSize: "14px", fontWeight: "600", color: "#f9fafb" },
+    closeBtn: {
+      background: "none",
+      border: "none",
+      cursor: "pointer",
+      color: "#6b7280",
+      fontSize: "18px",
+      lineHeight: "1",
+      padding: "0 2px"
+    },
+    sectionLabel: {
+      fontSize: "10px",
+      fontWeight: "700",
+      color: "#6b7280",
+      textTransform: "uppercase",
+      letterSpacing: "0.07em",
+      marginBottom: "8px"
+    },
+    row: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: "8px",
+      marginBottom: "6px"
+    },
+    labelWrap: { display: "flex", alignItems: "center", gap: "5px" },
+    label: { fontSize: "13px", color: "#d1d5db", cursor: "default" },
+    input: {
+      width: "54px",
+      padding: "3px 6px",
+      borderRadius: "6px",
+      border: "1px solid rgba(255,255,255,0.12)",
+      background: "rgba(255,255,255,0.06)",
+      color: "#f9fafb",
+      fontSize: "13px",
+      textAlign: "center"
+    },
+    unit: { fontSize: "12px", color: "#6b7280", minWidth: "36px" },
+    sep: { borderTop: "1px solid rgba(255,255,255,0.08)", margin: "16px 0 14px" },
+    footer: { display: "flex", gap: "8px", justifyContent: "flex-end" },
+    helpIcon: {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      width: "14px",
+      height: "14px",
+      borderRadius: "50%",
+      border: "1px solid rgba(255,255,255,0.18)",
+      color: "#6b7280",
+      fontSize: "9px",
+      fontWeight: "700",
+      cursor: "help",
+      flexShrink: "0",
+      position: "relative",
+      userSelect: "none",
+      transition: "color .12s, border-color .12s, background .12s"
+    },
+    helpTip: {
+      position: "absolute",
+      left: "50%",
+      bottom: "calc(100% + 6px)",
+      transform: "translateX(-50%)",
+      background: "#252836",
+      border: "1px solid rgba(255,255,255,0.15)",
+      borderRadius: "7px",
+      padding: "7px 10px",
+      fontSize: "11px",
+      color: "#c9d1d9",
+      width: "210px",
+      lineHeight: "1.5",
+      boxShadow: "0 4px 16px rgba(0,0,0,0.45)",
+      zIndex: "2",
+      pointerEvents: "none",
+      display: "none",
+      whiteSpace: "normal"
+    }
+  };
+  function el(tag, styles, text) {
+    const e = document.createElement(tag);
+    if (styles)
+      Object.assign(e.style, styles);
+    if (text)
+      e.textContent = text;
+    return e;
+  }
+  function mkBtn(label, primary, danger) {
+    const b = el("button", {
+      padding: "5px 13px",
+      borderRadius: "6px",
+      fontSize: "12px",
+      fontWeight: "600",
+      cursor: "pointer",
+      border: "none",
+      transition: "opacity .12s",
+      background: primary ? "#3b5bdb" : danger ? "rgba(255,90,90,0.15)" : "rgba(255,255,255,0.08)",
+      color: primary ? "#fff" : danger ? "#ff7a7a" : "#9ca3af"
+    }, label);
+    b.onmouseenter = () => {
+      b.style.opacity = "0.75";
+    };
+    b.onmouseleave = () => {
+      b.style.opacity = "1";
+    };
+    return b;
+  }
+  function addHelpIcon(parent, helpText) {
+    const icon = el("span", S.helpIcon, "?");
+    const tip = el("div", S.helpTip, helpText);
+    icon.appendChild(tip);
+    icon.onmouseenter = () => {
+      tip.style.display = "block";
+      Object.assign(icon.style, {
+        color: "#c9d1d9",
+        borderColor: "rgba(255,255,255,0.5)",
+        background: "rgba(255,255,255,0.08)"
+      });
+    };
+    icon.onmouseleave = () => {
+      tip.style.display = "none";
+      Object.assign(icon.style, {
+        color: "#6b7280",
+        borderColor: "rgba(255,255,255,0.18)",
+        background: ""
+      });
+    };
+    parent.appendChild(icon);
+  }
+  function addSection(panel, label) {
+    const sec = el("div", { marginBottom: "14px" });
+    sec.appendChild(el("div", S.sectionLabel, label));
+    panel.appendChild(sec);
+    return sec;
+  }
+  function addRow(parent, inputs, key, label, value, min, max, unit, helpText) {
+    const row = el("div", S.row);
+    const lblWrap = el("div", S.labelWrap);
+    lblWrap.appendChild(el("label", S.label, label));
+    if (helpText)
+      addHelpIcon(lblWrap, helpText);
+    row.appendChild(lblWrap);
+    const right = el("div", {
+      display: "flex",
+      alignItems: "center",
+      gap: "5px"
+    });
+    const inp = el("input", S.input);
+    inp.type = "number";
+    inp.id = "__cpace_" + key;
+    inp.value = value;
+    inp.min = min;
+    inp.max = max;
+    right.appendChild(inp);
+    right.appendChild(el("span", S.unit, unit));
+    row.appendChild(right);
+    parent.appendChild(row);
+    inputs[key] = inp;
+  }
   function _injectSettingsGear(getCfg2, applySettings) {
     if (document.getElementById(GEAR_ID))
       return true;
@@ -1104,10 +1446,7 @@
     }
     if (!anchor)
       return false;
-    const btn = document.createElement("button");
-    btn.id = GEAR_ID;
-    btn.title = "Pace indicator settings";
-    Object.assign(btn.style, {
+    const btn = el("button", {
       display: "inline-flex",
       alignItems: "center",
       justifyContent: "center",
@@ -1122,6 +1461,8 @@
       verticalAlign: "middle",
       flexShrink: "0"
     });
+    btn.id = GEAR_ID;
+    btn.title = "Pace indicator settings";
     btn.onmouseenter = () => {
       btn.style.color = "rgba(200,200,200,0.9)";
     };
@@ -1149,208 +1490,27 @@
   function openSettingsPanel(cfg, applySettings) {
     if (document.getElementById(PANEL_ID))
       return;
-    const overlay = document.createElement("div");
+    const overlay = el("div", S.overlay);
     overlay.id = PANEL_ID;
-    Object.assign(overlay.style, {
-      position: "fixed",
-      inset: "0",
-      zIndex: "99999",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      background: "rgba(0,0,0,0.55)",
-      backdropFilter: "blur(2px)"
-    });
-    const panel = document.createElement("div");
-    Object.assign(panel.style, {
-      background: "#1a1d24",
-      border: "1px solid rgba(255,255,255,0.1)",
-      borderRadius: "12px",
-      padding: "20px 24px",
-      minWidth: "340px",
-      boxShadow: "0 8px 40px rgba(0,0,0,0.6)",
-      fontFamily: "inherit",
-      color: "#e5e7eb"
-    });
-    const hdr = document.createElement("div");
-    Object.assign(hdr.style, {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: "16px"
-    });
-    const hdrTitle = document.createElement("div");
-    Object.assign(hdrTitle.style, { fontSize: "14px", fontWeight: "600", color: "#f9fafb" });
-    hdrTitle.textContent = "Pace indicator settings";
-    const hdrClose = document.createElement("button");
-    Object.assign(hdrClose.style, {
-      background: "none",
-      border: "none",
-      cursor: "pointer",
-      color: "#6b7280",
-      fontSize: "18px",
-      lineHeight: "1",
-      padding: "0 2px"
-    });
-    hdrClose.textContent = "×";
-    hdr.appendChild(hdrTitle);
+    const panel = el("div", S.panel);
+    const hdr = el("div", S.header);
+    hdr.appendChild(el("div", S.headerTitle, "Pace indicator settings"));
+    const hdrClose = el("button", S.closeBtn, "×");
     hdr.appendChild(hdrClose);
     panel.appendChild(hdr);
-    function addSection(label) {
-      const sec = document.createElement("div");
-      Object.assign(sec.style, { marginBottom: "14px" });
-      const lbl = document.createElement("div");
-      Object.assign(lbl.style, {
-        fontSize: "10px",
-        fontWeight: "700",
-        color: "#6b7280",
-        textTransform: "uppercase",
-        letterSpacing: "0.07em",
-        marginBottom: "8px"
-      });
-      lbl.textContent = label;
-      sec.appendChild(lbl);
-      panel.appendChild(sec);
-      return sec;
-    }
     const inputs = {};
-    function addRow(parent, key, label, value, min, max, unit, helpText) {
-      const row = document.createElement("div");
-      Object.assign(row.style, {
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: "8px",
-        marginBottom: "6px"
-      });
-      const lblWrap = document.createElement("div");
-      Object.assign(lblWrap.style, { display: "flex", alignItems: "center", gap: "5px" });
-      const lbl = document.createElement("label");
-      lbl.htmlFor = "__cpace_" + key;
-      Object.assign(lbl.style, { fontSize: "13px", color: "#d1d5db", cursor: "default" });
-      lbl.textContent = label;
-      lblWrap.appendChild(lbl);
-      if (helpText) {
-        const icon = document.createElement("span");
-        icon.textContent = "?";
-        Object.assign(icon.style, {
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: "14px",
-          height: "14px",
-          borderRadius: "50%",
-          border: "1px solid rgba(255,255,255,0.18)",
-          color: "#6b7280",
-          fontSize: "9px",
-          fontWeight: "700",
-          cursor: "help",
-          flexShrink: "0",
-          position: "relative",
-          userSelect: "none",
-          transition: "color .12s, border-color .12s, background .12s"
-        });
-        const tip = document.createElement("div");
-        Object.assign(tip.style, {
-          position: "absolute",
-          left: "50%",
-          bottom: "calc(100% + 6px)",
-          transform: "translateX(-50%)",
-          background: "#252836",
-          border: "1px solid rgba(255,255,255,0.15)",
-          borderRadius: "7px",
-          padding: "7px 10px",
-          fontSize: "11px",
-          color: "#c9d1d9",
-          width: "210px",
-          lineHeight: "1.5",
-          boxShadow: "0 4px 16px rgba(0,0,0,0.45)",
-          zIndex: "2",
-          pointerEvents: "none",
-          display: "none",
-          whiteSpace: "normal"
-        });
-        tip.textContent = helpText;
-        icon.appendChild(tip);
-        icon.onmouseenter = () => {
-          tip.style.display = "block";
-          icon.style.color = "#c9d1d9";
-          icon.style.borderColor = "rgba(255,255,255,0.5)";
-          icon.style.background = "rgba(255,255,255,0.08)";
-        };
-        icon.onmouseleave = () => {
-          tip.style.display = "none";
-          icon.style.color = "#6b7280";
-          icon.style.borderColor = "rgba(255,255,255,0.18)";
-          icon.style.background = "";
-        };
-        lblWrap.appendChild(icon);
-      }
-      const right = document.createElement("div");
-      Object.assign(right.style, { display: "flex", alignItems: "center", gap: "5px" });
-      const inp = document.createElement("input");
-      inp.type = "number";
-      inp.id = "__cpace_" + key;
-      inp.value = value;
-      inp.min = min;
-      inp.max = max;
-      Object.assign(inp.style, {
-        width: "54px",
-        padding: "3px 6px",
-        borderRadius: "6px",
-        border: "1px solid rgba(255,255,255,0.12)",
-        background: "rgba(255,255,255,0.06)",
-        color: "#f9fafb",
-        fontSize: "13px",
-        textAlign: "center"
-      });
-      const unitEl = document.createElement("span");
-      Object.assign(unitEl.style, { fontSize: "12px", color: "#6b7280", minWidth: "36px" });
-      unitEl.textContent = unit;
-      right.appendChild(inp);
-      right.appendChild(unitEl);
-      row.appendChild(lblWrap);
-      row.appendChild(right);
-      parent.appendChild(row);
-      inputs[key] = inp;
-    }
-    const s1 = addSection("Active window");
-    addRow(s1, "activeStartH", "Start hour", cfg.activeStartH, 0, 23, "h (0–23)", "Hour when your coding day begins. Before this, no tokens are expected — the pace clock starts here each day.");
-    addRow(s1, "activeEndH", "End / bonus starts", cfg.activeEndH, 0, 23, "h (0–23)", "Hour when the active window closes and the bonus window begins. The daily target badge shows whether you're on pace by this hour.");
-    addRow(s1, "sleepStartH", "Sleep starts", cfg.sleepStartH, 0, 23, "h (0–23)", "Hour when the bonus window ends and sleep begins. Pace expectations freeze during sleep — you're not expected to use tokens overnight.");
-    const s2 = addSection("Neutral tolerance");
-    addRow(s2, "bandWeekly", "Weekly buckets", cfg.bandWeekly, 0, 20, "%pp ±", "How many percentage points off from the expected weekly pace before the badge turns red or green. Wider = more forgiving.");
-    addRow(s2, "bandSession", "Session (5h)", cfg.bandSession, 0, 20, "%pp ±", "Same tolerance for the 5-hour session bucket, which resets more often and naturally varies more than the weekly view.");
-    const s3 = addSection("Polling");
-    addRow(s3, "pollIntervalMin", "Check interval", cfg.pollIntervalMin, 1, 120, "min", "How often the script re-fetches usage data from Claude's API in the background. Lower = more up to date, higher = fewer requests.");
+    const s1 = addSection(panel, "Active window");
+    addRow(s1, inputs, "activeStartH", "Start hour", cfg.activeStartH, 0, 23, "h (0–23)", "Hour when your coding day begins. Before this, no tokens are expected — the pace clock starts here each day.");
+    addRow(s1, inputs, "activeEndH", "End / bonus starts", cfg.activeEndH, 0, 23, "h (0–23)", "Hour when the active window closes and the bonus window begins. The daily target badge shows whether you're on pace by this hour.");
+    addRow(s1, inputs, "sleepStartH", "Sleep starts", cfg.sleepStartH, 0, 23, "h (0–23)", "Hour when the bonus window ends and sleep begins. Pace expectations freeze during sleep — you're not expected to use tokens overnight.");
+    const s2 = addSection(panel, "Neutral tolerance");
+    addRow(s2, inputs, "bandWeekly", "Weekly buckets", cfg.bandWeekly, 0, 20, "%pp ±", "How many percentage points off from the expected weekly pace before the badge turns red or green. Wider = more forgiving.");
+    addRow(s2, inputs, "bandSession", "Session (5h)", cfg.bandSession, 0, 20, "%pp ±", "Same tolerance for the 5-hour session bucket, which resets more often and naturally varies more than the weekly view.");
+    const s3 = addSection(panel, "Polling");
+    addRow(s3, inputs, "pollIntervalMin", "Check interval", cfg.pollIntervalMin, 1, 120, "min", "How often the script re-fetches usage data from Claude's API in the background. Lower = more up to date, higher = fewer requests.");
     renderMcpSection(panel, () => cfg, applySettings);
-    const sep = document.createElement("div");
-    Object.assign(sep.style, { borderTop: "1px solid rgba(255,255,255,0.08)", margin: "16px 0 14px" });
-    panel.appendChild(sep);
-    const footer = document.createElement("div");
-    Object.assign(footer.style, { display: "flex", gap: "8px", justifyContent: "flex-end" });
-    function mkBtn(label, primary, danger) {
-      const b = document.createElement("button");
-      b.textContent = label;
-      Object.assign(b.style, {
-        padding: "5px 13px",
-        borderRadius: "6px",
-        fontSize: "12px",
-        fontWeight: "600",
-        cursor: "pointer",
-        border: "none",
-        transition: "opacity .12s",
-        background: primary ? "#3b5bdb" : danger ? "rgba(255,90,90,0.15)" : "rgba(255,255,255,0.08)",
-        color: primary ? "#fff" : danger ? "#ff7a7a" : "#9ca3af"
-      });
-      b.onmouseenter = () => {
-        b.style.opacity = "0.75";
-      };
-      b.onmouseleave = () => {
-        b.style.opacity = "1";
-      };
-      return b;
-    }
+    panel.appendChild(el("div", S.sep));
+    const footer = el("div", S.footer);
     const resetBtn = mkBtn("Reset defaults", false, true);
     const cancelBtn = mkBtn("Cancel");
     const saveBtn = mkBtn("Save", true);
@@ -1528,24 +1688,6 @@
   // src/userscript/mcp-push.js
   var _lastPushTs = 0;
   var _heartbeatTimer = null;
-  function gmFetch2(url, { method = "GET", headers = {}, body = undefined, timeoutMs = 1500 } = {}) {
-    return new Promise((resolve, reject) => {
-      if (typeof GM_xmlhttpRequest === "undefined") {
-        reject(new Error("GM_xmlhttpRequest unavailable"));
-        return;
-      }
-      GM_xmlhttpRequest({
-        method,
-        url,
-        headers,
-        data: body,
-        timeout: timeoutMs,
-        onload: (r) => resolve(r),
-        onerror: () => reject(new Error("network error")),
-        ontimeout: () => reject(new Error("timeout"))
-      });
-    });
-  }
   async function pushState(json, cfg) {
     if (cfg.mcpPushEnabled === false)
       return;
@@ -1557,7 +1699,7 @@
       return;
     _lastPushTs = now;
     try {
-      await gmFetch2(`http://localhost:${cfg.mcpPort}/state`, {
+      await gmFetch(`http://localhost:${cfg.mcpPort}/state`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -1573,7 +1715,9 @@
       return;
     const tick = async () => {
       try {
-        await gmFetch2(`http://localhost:${cfg.mcpPort}/heartbeat`, { method: "POST" });
+        await gmFetch(`http://localhost:${cfg.mcpPort}/heartbeat`, {
+          method: "POST"
+        });
       } catch {}
     };
     _heartbeatTimer = setInterval(tick, 60000);

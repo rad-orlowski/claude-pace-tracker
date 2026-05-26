@@ -26,6 +26,208 @@ export function clearGearRetry() {
 	_gearRetryTimer = null;
 }
 
+// ── Style constants ─────────────────────────────────────────────
+
+const S = {
+	overlay: {
+		position: "fixed",
+		inset: "0",
+		zIndex: "99999",
+		display: "flex",
+		alignItems: "center",
+		justifyContent: "center",
+		background: "rgba(0,0,0,0.55)",
+		backdropFilter: "blur(2px)",
+	},
+	panel: {
+		background: "#1a1d24",
+		border: "1px solid rgba(255,255,255,0.1)",
+		borderRadius: "12px",
+		padding: "20px 24px",
+		minWidth: "340px",
+		boxShadow: "0 8px 40px rgba(0,0,0,0.6)",
+		fontFamily: "inherit",
+		color: "#e5e7eb",
+	},
+	header: {
+		display: "flex",
+		alignItems: "center",
+		justifyContent: "space-between",
+		marginBottom: "16px",
+	},
+	headerTitle: { fontSize: "14px", fontWeight: "600", color: "#f9fafb" },
+	closeBtn: {
+		background: "none",
+		border: "none",
+		cursor: "pointer",
+		color: "#6b7280",
+		fontSize: "18px",
+		lineHeight: "1",
+		padding: "0 2px",
+	},
+	sectionLabel: {
+		fontSize: "10px",
+		fontWeight: "700",
+		color: "#6b7280",
+		textTransform: "uppercase",
+		letterSpacing: "0.07em",
+		marginBottom: "8px",
+	},
+	row: {
+		display: "flex",
+		alignItems: "center",
+		justifyContent: "space-between",
+		gap: "8px",
+		marginBottom: "6px",
+	},
+	labelWrap: { display: "flex", alignItems: "center", gap: "5px" },
+	label: { fontSize: "13px", color: "#d1d5db", cursor: "default" },
+	input: {
+		width: "54px",
+		padding: "3px 6px",
+		borderRadius: "6px",
+		border: "1px solid rgba(255,255,255,0.12)",
+		background: "rgba(255,255,255,0.06)",
+		color: "#f9fafb",
+		fontSize: "13px",
+		textAlign: "center",
+	},
+	unit: { fontSize: "12px", color: "#6b7280", minWidth: "36px" },
+	sep: { borderTop: "1px solid rgba(255,255,255,0.08)", margin: "16px 0 14px" },
+	footer: { display: "flex", gap: "8px", justifyContent: "flex-end" },
+	helpIcon: {
+		display: "inline-flex",
+		alignItems: "center",
+		justifyContent: "center",
+		width: "14px",
+		height: "14px",
+		borderRadius: "50%",
+		border: "1px solid rgba(255,255,255,0.18)",
+		color: "#6b7280",
+		fontSize: "9px",
+		fontWeight: "700",
+		cursor: "help",
+		flexShrink: "0",
+		position: "relative",
+		userSelect: "none",
+		transition: "color .12s, border-color .12s, background .12s",
+	},
+	helpTip: {
+		position: "absolute",
+		left: "50%",
+		bottom: "calc(100% + 6px)",
+		transform: "translateX(-50%)",
+		background: "#252836",
+		border: "1px solid rgba(255,255,255,0.15)",
+		borderRadius: "7px",
+		padding: "7px 10px",
+		fontSize: "11px",
+		color: "#c9d1d9",
+		width: "210px",
+		lineHeight: "1.5",
+		boxShadow: "0 4px 16px rgba(0,0,0,0.45)",
+		zIndex: "2",
+		pointerEvents: "none",
+		display: "none",
+		whiteSpace: "normal",
+	},
+};
+
+// ── DOM builders ────────────────────────────────────────────────
+
+function el(tag, styles, text) {
+	const e = document.createElement(tag);
+	if (styles) Object.assign(e.style, styles);
+	if (text) e.textContent = text;
+	return e;
+}
+
+function mkBtn(label, primary, danger) {
+	const b = el(
+		"button",
+		{
+			padding: "5px 13px",
+			borderRadius: "6px",
+			fontSize: "12px",
+			fontWeight: "600",
+			cursor: "pointer",
+			border: "none",
+			transition: "opacity .12s",
+			background: primary
+				? "#3b5bdb"
+				: danger
+					? "rgba(255,90,90,0.15)"
+					: "rgba(255,255,255,0.08)",
+			color: primary ? "#fff" : danger ? "#ff7a7a" : "#9ca3af",
+		},
+		label,
+	);
+	b.onmouseenter = () => {
+		b.style.opacity = "0.75";
+	};
+	b.onmouseleave = () => {
+		b.style.opacity = "1";
+	};
+	return b;
+}
+
+function addHelpIcon(parent, helpText) {
+	const icon = el("span", S.helpIcon, "?");
+	const tip = el("div", S.helpTip, helpText);
+	icon.appendChild(tip);
+	icon.onmouseenter = () => {
+		tip.style.display = "block";
+		Object.assign(icon.style, {
+			color: "#c9d1d9",
+			borderColor: "rgba(255,255,255,0.5)",
+			background: "rgba(255,255,255,0.08)",
+		});
+	};
+	icon.onmouseleave = () => {
+		tip.style.display = "none";
+		Object.assign(icon.style, {
+			color: "#6b7280",
+			borderColor: "rgba(255,255,255,0.18)",
+			background: "",
+		});
+	};
+	parent.appendChild(icon);
+}
+
+function addSection(panel, label) {
+	const sec = el("div", { marginBottom: "14px" });
+	sec.appendChild(el("div", S.sectionLabel, label));
+	panel.appendChild(sec);
+	return sec;
+}
+
+function addRow(parent, inputs, key, label, value, min, max, unit, helpText) {
+	const row = el("div", S.row);
+	const lblWrap = el("div", S.labelWrap);
+	lblWrap.appendChild(el("label", S.label, label));
+	if (helpText) addHelpIcon(lblWrap, helpText);
+	row.appendChild(lblWrap);
+
+	const right = el("div", {
+		display: "flex",
+		alignItems: "center",
+		gap: "5px",
+	});
+	const inp = el("input", S.input);
+	inp.type = "number";
+	inp.id = "__cpace_" + key;
+	inp.value = value;
+	inp.min = min;
+	inp.max = max;
+	right.appendChild(inp);
+	right.appendChild(el("span", S.unit, unit));
+	row.appendChild(right);
+	parent.appendChild(row);
+	inputs[key] = inp;
+}
+
+// ── Gear injection ──────────────────────────────────────────────
+
 function _injectSettingsGear(getCfg, applySettings) {
 	if (document.getElementById(GEAR_ID)) return true;
 	let anchor = null;
@@ -36,10 +238,8 @@ function _injectSettingsGear(getCfg, applySettings) {
 		}
 	}
 	if (!anchor) return false;
-	const btn = document.createElement("button");
-	btn.id = GEAR_ID;
-	btn.title = "Pace indicator settings";
-	Object.assign(btn.style, {
+
+	const btn = el("button", {
 		display: "inline-flex",
 		alignItems: "center",
 		justifyContent: "center",
@@ -54,6 +254,8 @@ function _injectSettingsGear(getCfg, applySettings) {
 		verticalAlign: "middle",
 		flexShrink: "0",
 	});
+	btn.id = GEAR_ID;
+	btn.title = "Pace indicator settings";
 	btn.onmouseenter = () => {
 		btn.style.color = "rgba(200,200,200,0.9)";
 	};
@@ -64,6 +266,7 @@ function _injectSettingsGear(getCfg, applySettings) {
 		e.stopPropagation();
 		openSettingsPanel(getCfg(), applySettings);
 	};
+
 	if (isLucideReady()) {
 		btn.appendChild(makeLucideIcon("settings", 14));
 		renderLucideIcons(btn);
@@ -81,202 +284,28 @@ function _injectSettingsGear(getCfg, applySettings) {
 	return true;
 }
 
+// ── Settings panel ──────────────────────────────────────────────
+
 export function openSettingsPanel(cfg, applySettings) {
 	if (document.getElementById(PANEL_ID)) return;
 
-	const overlay = document.createElement("div");
+	const overlay = el("div", S.overlay);
 	overlay.id = PANEL_ID;
-	Object.assign(overlay.style, {
-		position: "fixed",
-		inset: "0",
-		zIndex: "99999",
-		display: "flex",
-		alignItems: "center",
-		justifyContent: "center",
-		background: "rgba(0,0,0,0.55)",
-		backdropFilter: "blur(2px)",
-	});
+	const panel = el("div", S.panel);
 
-	const panel = document.createElement("div");
-	Object.assign(panel.style, {
-		background: "#1a1d24",
-		border: "1px solid rgba(255,255,255,0.1)",
-		borderRadius: "12px",
-		padding: "20px 24px",
-		minWidth: "340px",
-		boxShadow: "0 8px 40px rgba(0,0,0,0.6)",
-		fontFamily: "inherit",
-		color: "#e5e7eb",
-	});
-
-	const hdr = document.createElement("div");
-	Object.assign(hdr.style, {
-		display: "flex",
-		alignItems: "center",
-		justifyContent: "space-between",
-		marginBottom: "16px",
-	});
-	const hdrTitle = document.createElement("div");
-	Object.assign(hdrTitle.style, {
-		fontSize: "14px",
-		fontWeight: "600",
-		color: "#f9fafb",
-	});
-	hdrTitle.textContent = "Pace indicator settings";
-	const hdrClose = document.createElement("button");
-	Object.assign(hdrClose.style, {
-		background: "none",
-		border: "none",
-		cursor: "pointer",
-		color: "#6b7280",
-		fontSize: "18px",
-		lineHeight: "1",
-		padding: "0 2px",
-	});
-	hdrClose.textContent = "×";
-	hdr.appendChild(hdrTitle);
+	// Header
+	const hdr = el("div", S.header);
+	hdr.appendChild(el("div", S.headerTitle, "Pace indicator settings"));
+	const hdrClose = el("button", S.closeBtn, "×");
 	hdr.appendChild(hdrClose);
 	panel.appendChild(hdr);
 
-	function addSection(label) {
-		const sec = document.createElement("div");
-		Object.assign(sec.style, { marginBottom: "14px" });
-		const lbl = document.createElement("div");
-		Object.assign(lbl.style, {
-			fontSize: "10px",
-			fontWeight: "700",
-			color: "#6b7280",
-			textTransform: "uppercase",
-			letterSpacing: "0.07em",
-			marginBottom: "8px",
-		});
-		lbl.textContent = label;
-		sec.appendChild(lbl);
-		panel.appendChild(sec);
-		return sec;
-	}
-
+	// Sections + inputs
 	const inputs = {};
-	function addRow(parent, key, label, value, min, max, unit, helpText) {
-		const row = document.createElement("div");
-		Object.assign(row.style, {
-			display: "flex",
-			alignItems: "center",
-			justifyContent: "space-between",
-			gap: "8px",
-			marginBottom: "6px",
-		});
-		const lblWrap = document.createElement("div");
-		Object.assign(lblWrap.style, {
-			display: "flex",
-			alignItems: "center",
-			gap: "5px",
-		});
-		const lbl = document.createElement("label");
-		lbl.htmlFor = "__cpace_" + key;
-		Object.assign(lbl.style, {
-			fontSize: "13px",
-			color: "#d1d5db",
-			cursor: "default",
-		});
-		lbl.textContent = label;
-		lblWrap.appendChild(lbl);
-		if (helpText) {
-			const icon = document.createElement("span");
-			icon.textContent = "?";
-			Object.assign(icon.style, {
-				display: "inline-flex",
-				alignItems: "center",
-				justifyContent: "center",
-				width: "14px",
-				height: "14px",
-				borderRadius: "50%",
-				border: "1px solid rgba(255,255,255,0.18)",
-				color: "#6b7280",
-				fontSize: "9px",
-				fontWeight: "700",
-				cursor: "help",
-				flexShrink: "0",
-				position: "relative",
-				userSelect: "none",
-				transition: "color .12s, border-color .12s, background .12s",
-			});
-			const tip = document.createElement("div");
-			Object.assign(tip.style, {
-				position: "absolute",
-				left: "50%",
-				bottom: "calc(100% + 6px)",
-				transform: "translateX(-50%)",
-				background: "#252836",
-				border: "1px solid rgba(255,255,255,0.15)",
-				borderRadius: "7px",
-				padding: "7px 10px",
-				fontSize: "11px",
-				color: "#c9d1d9",
-				width: "210px",
-				lineHeight: "1.5",
-				boxShadow: "0 4px 16px rgba(0,0,0,0.45)",
-				zIndex: "2",
-				pointerEvents: "none",
-				display: "none",
-				whiteSpace: "normal",
-			});
-			tip.textContent = helpText;
-			icon.appendChild(tip);
-			icon.onmouseenter = () => {
-				tip.style.display = "block";
-				icon.style.color = "#c9d1d9";
-				icon.style.borderColor = "rgba(255,255,255,0.5)";
-				icon.style.background = "rgba(255,255,255,0.08)";
-			};
-			icon.onmouseleave = () => {
-				tip.style.display = "none";
-				icon.style.color = "#6b7280";
-				icon.style.borderColor = "rgba(255,255,255,0.18)";
-				icon.style.background = "";
-			};
-			lblWrap.appendChild(icon);
-		}
-		const right = document.createElement("div");
-		Object.assign(right.style, {
-			display: "flex",
-			alignItems: "center",
-			gap: "5px",
-		});
-		const inp = document.createElement("input");
-		inp.type = "number";
-		inp.id = "__cpace_" + key;
-		inp.value = value;
-		inp.min = min;
-		inp.max = max;
-		Object.assign(inp.style, {
-			width: "54px",
-			padding: "3px 6px",
-			borderRadius: "6px",
-			border: "1px solid rgba(255,255,255,0.12)",
-			background: "rgba(255,255,255,0.06)",
-			color: "#f9fafb",
-			fontSize: "13px",
-			textAlign: "center",
-		});
-		const unitEl = document.createElement("span");
-		Object.assign(unitEl.style, {
-			fontSize: "12px",
-			color: "#6b7280",
-			minWidth: "36px",
-		});
-		unitEl.textContent = unit;
-		right.appendChild(inp);
-		right.appendChild(unitEl);
-		row.appendChild(lblWrap);
-		row.appendChild(right);
-		parent.appendChild(row);
-		inputs[key] = inp;
-	}
-
-	const s1 = addSection("Active window");
+	const s1 = addSection(panel, "Active window");
 	addRow(
 		s1,
+		inputs,
 		"activeStartH",
 		"Start hour",
 		cfg.activeStartH,
@@ -287,6 +316,7 @@ export function openSettingsPanel(cfg, applySettings) {
 	);
 	addRow(
 		s1,
+		inputs,
 		"activeEndH",
 		"End / bonus starts",
 		cfg.activeEndH,
@@ -297,6 +327,7 @@ export function openSettingsPanel(cfg, applySettings) {
 	);
 	addRow(
 		s1,
+		inputs,
 		"sleepStartH",
 		"Sleep starts",
 		cfg.sleepStartH,
@@ -306,9 +337,10 @@ export function openSettingsPanel(cfg, applySettings) {
 		"Hour when the bonus window ends and sleep begins. Pace expectations freeze during sleep — you're not expected to use tokens overnight.",
 	);
 
-	const s2 = addSection("Neutral tolerance");
+	const s2 = addSection(panel, "Neutral tolerance");
 	addRow(
 		s2,
+		inputs,
 		"bandWeekly",
 		"Weekly buckets",
 		cfg.bandWeekly,
@@ -319,6 +351,7 @@ export function openSettingsPanel(cfg, applySettings) {
 	);
 	addRow(
 		s2,
+		inputs,
 		"bandSession",
 		"Session (5h)",
 		cfg.bandSession,
@@ -328,9 +361,10 @@ export function openSettingsPanel(cfg, applySettings) {
 		"Same tolerance for the 5-hour session bucket, which resets more often and naturally varies more than the weekly view.",
 	);
 
-	const s3 = addSection("Polling");
+	const s3 = addSection(panel, "Polling");
 	addRow(
 		s3,
+		inputs,
 		"pollIntervalMin",
 		"Check interval",
 		cfg.pollIntervalMin,
@@ -342,47 +376,9 @@ export function openSettingsPanel(cfg, applySettings) {
 
 	renderMcpSection(panel, () => cfg, applySettings);
 
-	const sep = document.createElement("div");
-	Object.assign(sep.style, {
-		borderTop: "1px solid rgba(255,255,255,0.08)",
-		margin: "16px 0 14px",
-	});
-	panel.appendChild(sep);
-
-	const footer = document.createElement("div");
-	Object.assign(footer.style, {
-		display: "flex",
-		gap: "8px",
-		justifyContent: "flex-end",
-	});
-
-	function mkBtn(label, primary, danger) {
-		const b = document.createElement("button");
-		b.textContent = label;
-		Object.assign(b.style, {
-			padding: "5px 13px",
-			borderRadius: "6px",
-			fontSize: "12px",
-			fontWeight: "600",
-			cursor: "pointer",
-			border: "none",
-			transition: "opacity .12s",
-			background: primary
-				? "#3b5bdb"
-				: danger
-					? "rgba(255,90,90,0.15)"
-					: "rgba(255,255,255,0.08)",
-			color: primary ? "#fff" : danger ? "#ff7a7a" : "#9ca3af",
-		});
-		b.onmouseenter = () => {
-			b.style.opacity = "0.75";
-		};
-		b.onmouseleave = () => {
-			b.style.opacity = "1";
-		};
-		return b;
-	}
-
+	// Separator + footer
+	panel.appendChild(el("div", S.sep));
+	const footer = el("div", S.footer);
 	const resetBtn = mkBtn("Reset defaults", false, true);
 	const cancelBtn = mkBtn("Cancel");
 	const saveBtn = mkBtn("Save", true);
@@ -405,8 +401,6 @@ export function openSettingsPanel(cfg, applySettings) {
 		for (const [k, inp] of Object.entries(inputs)) inp.value = CFG_DEFAULTS[k];
 	};
 	saveBtn.onclick = () => {
-		// Merge numeric inputs over the *current* config to preserve fields
-		// not represented in the panel (mcpPushEnabled, mcpPort, etc.).
 		const newCfg = { ...cfg };
 		for (const [k, inp] of Object.entries(inputs)) {
 			const def = CFG_DEFAULTS[k];

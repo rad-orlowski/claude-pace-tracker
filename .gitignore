@@ -14,3 +14,5 @@ docs/
 .vscode/
 *.iml
 .pi-lens/
+.fusion
+.pi

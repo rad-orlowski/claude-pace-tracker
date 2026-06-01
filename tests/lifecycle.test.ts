@@ -117,49 +117,40 @@ describe('lifecycle.js - SPA Navigation and Cleanup', () => {
 		});
 	});
 
-	describe('SPA navigation detection', () => {
-		it('should detect navigation to /settings/usage', () => {
-			// Set pathname
-			Object.defineProperty(window.location, 'pathname', {
-				writable: true,
-				value: '/settings/usage',
-			});
+	// Mirrors onUsageView() in lifecycle.js. The usage view is now a hash route
+	// (e.g. /new#settings/usage) reachable from any page; the path fallback keeps
+	// older /settings/usage deep-links working.
+	const onUsageView = (hash: string, pathname: string) =>
+		/(^|\/)settings\/usage\/?$/.test(hash.replace(/^#/, '')) ||
+		/\/settings\/usage\/?$/.test(pathname);
 
-			const onUsagePage = /\/settings\/usage(\b|\/)/.test(window.location.pathname);
-			expect(onUsagePage).toBe(true);
+	describe('SPA navigation detection (hash route)', () => {
+		it('should detect the #settings/usage hash route over /new', () => {
+			expect(onUsageView('#settings/usage', '/new')).toBe(true);
 		});
 
-		it('should detect navigation away from /settings/usage', () => {
-			// Set pathname to different page
-			Object.defineProperty(window.location, 'pathname', {
-				writable: true,
-				value: '/settings',
-			});
-
-			const onUsagePage = /\/settings\/usage(\b|\/)/.test(window.location.pathname);
-			expect(onUsagePage).toBe(false);
+		it('should detect the #settings/usage hash route over /recents', () => {
+			expect(onUsageView('#settings/usage', '/recents')).toBe(true);
 		});
 
-		it('should detect navigation to usage subpage', () => {
-			// Set pathname to usage subpage
-			Object.defineProperty(window.location, 'pathname', {
-				writable: true,
-				value: '/settings/usage/weekly',
-			});
-
-			const onUsagePage = /\/settings\/usage(\b|\/)/.test(window.location.pathname);
-			expect(onUsagePage).toBe(true);
+		it('should detect a trailing slash on the hash route', () => {
+			expect(onUsageView('#settings/usage/', '/new')).toBe(true);
 		});
 
-		it('should handle root navigation', () => {
-			// Set pathname to root
-			Object.defineProperty(window.location, 'pathname', {
-				writable: true,
-				value: '/',
-			});
+		it('should detect navigation away when the hash is cleared', () => {
+			expect(onUsageView('', '/new')).toBe(false);
+		});
 
-			const onUsagePage = /\/settings\/usage(\b|\/)/.test(window.location.pathname);
-			expect(onUsagePage).toBe(false);
+		it('should not match an unrelated settings hash route', () => {
+			expect(onUsageView('#settings/account', '/new')).toBe(false);
+		});
+
+		it('should still detect a legacy /settings/usage path with no hash', () => {
+			expect(onUsageView('', '/settings/usage')).toBe(true);
+		});
+
+		it('should not match the root with no hash', () => {
+			expect(onUsageView('', '/')).toBe(false);
 		});
 	});
 
@@ -496,15 +487,12 @@ describe('lifecycle.js - SPA Navigation and Cleanup', () => {
 			}).not.toThrow();
 		});
 
-		it('should handle invalid pathnames', () => {
-			// Test with undefined pathname
-			const onUsagePage = /\/settings\/usage(\b|\/)/.test('');
-			expect(onUsagePage).toBe(false);
+		it('should handle empty/garbage hash and pathname', () => {
+			// Empty everything → not on the usage view
+			expect(onUsageView('', '')).toBe(false);
 
-			// Test with special characters
-			const specialPath = '/settings/usage?test=<script>alert(1)</script>';
-			const matches = /\/settings\/usage(\b|\/)/.test(specialPath);
-			expect(matches).toBe(true);
+			// A trailing query string means it is no longer the bare usage route
+			expect(onUsageView('#settings/usage?x=<script>', '/new')).toBe(false);
 		});
 
 		it('should handle concurrent history API calls', () => {

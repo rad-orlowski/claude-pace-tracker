@@ -1,15 +1,15 @@
 // ==UserScript==
 // @name         Claude.ai Usage Pace Indicator
 // @namespace    https://github.com/rad-orlowski/claude-pace-tracker
-// @version      4.0.0
-// @description  Adds a pace marker and over/under pace badge to each bucket on the usage page at claude.ai/settings/usage
+// @version      4.1.0
+// @description  Adds a pace marker and over/under pace badge to each usage bucket in the claude.ai usage panel (the #settings/usage hash route / Settings → Usage modal)
 // @author       Rad Orlowski (https://github.com/rad-orlowski)
 // @homepageURL  https://github.com/rad-orlowski/claude-pace-tracker
 // @supportURL   https://github.com/rad-orlowski/claude-pace-tracker/issues
 // @updateURL    https://github.com/rad-orlowski/claude-pace-tracker/raw/main/dist/claude-usage-pace.user.js
 // @downloadURL  https://github.com/rad-orlowski/claude-pace-tracker/raw/main/dist/claude-usage-pace.user.js
 // @license      GPL-3.0-or-later
-// @match        https://claude.ai/settings/usage*
+// @match        https://claude.ai/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
@@ -1552,7 +1552,8 @@
 
   // src/userscript/lifecycle.js
   function installLifecycle(onRerender, onResumePolling, onStopPolling, onResumeHeartbeat, onStopHeartbeat) {
-    let rerenderInterval = setInterval(onRerender, 30000);
+    let rerenderInterval = null;
+    let active = false;
     const wrapHistory = (key) => {
       const orig = history[key];
       history[key] = function() {
@@ -1564,25 +1565,35 @@
     wrapHistory("pushState");
     wrapHistory("replaceState");
     window.addEventListener("popstate", handleNavigation);
+    window.addEventListener("hashchange", handleNavigation);
+    function onUsageView() {
+      return /(^|\/)settings\/usage\/?$/.test(location.hash.replace(/^#/, "")) || /\/settings\/usage\/?$/.test(location.pathname);
+    }
     function handleNavigation() {
-      const onUsagePage = /\/settings\/usage(\b|\/)/.test(location.pathname);
-      if (!onUsagePage) {
-        LOG("navigated away from /settings/usage — teardown");
-        teardownAll();
-        clearInterval(rerenderInterval);
-        clearRenderRetry();
-        clearGearRetry();
-        onStopPolling();
-        onStopHeartbeat?.();
-      } else {
-        LOG("navigated onto /settings/usage");
-        clearInterval(rerenderInterval);
+      if (onUsageView()) {
+        if (active)
+          return;
+        active = true;
+        LOG("entered #settings/usage — activating");
         rerenderInterval = setInterval(onRerender, 30000);
         onResumePolling();
         onResumeHeartbeat?.();
         onRerender();
+      } else {
+        if (!active)
+          return;
+        active = false;
+        LOG("left #settings/usage — teardown");
+        teardownAll();
+        clearInterval(rerenderInterval);
+        rerenderInterval = null;
+        clearRenderRetry();
+        clearGearRetry();
+        onStopPolling();
+        onStopHeartbeat?.();
       }
     }
+    handleNavigation();
     function teardownAll() {
       const gear = document.getElementById(GEAR_ID);
       if (gear)
@@ -1761,19 +1772,15 @@
     if (last)
       renderAllMarkers(last, getCfg());
   }
-  LOG("script loaded, version 4.0.0");
+  LOG("script loaded, version 4.1.0");
   installCapture(onUsage, () => {
     if (!isPolling())
       startPolling(getCfg());
   });
   function init() {
-    LOG("init() — installing UI");
+    LOG("init() — installing hooks");
     injectPaceStyles();
-    ensureLucide().catch((e) => WARN("Lucide load failed:", e));
     installLifecycle(rerenderMarkersFromLast, () => startPolling(getCfg()), stopPolling, () => startHeartbeat(getCfg()), stopHeartbeat);
-    startPolling(getCfg());
-    startHeartbeat(getCfg());
-    tryInjectGear(getCfg, applySettings);
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);

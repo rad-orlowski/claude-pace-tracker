@@ -8,13 +8,12 @@ import {
 } from "./polling.js";
 import { getCfg, setCfg, saveCfg } from "./config.js";
 import { renderAllMarkers } from "./render.js";
-import { ensureLucide } from "./ui/lucide.js";
 import { injectPaceStyles } from "./ui/styles.js";
 import { installLifecycle } from "./lifecycle.js";
 import { tryInjectGear } from "./ui/components/settings.js";
 import { pushState, startHeartbeat, stopHeartbeat } from "./mcp-push.js";
 
-import { LOG, WARN } from "./log.js";
+import { LOG } from "./log.js";
 
 function onUsage(json) {
 	if (!json || typeof json !== "object") return;
@@ -45,16 +44,19 @@ function rerenderMarkersFromLast() {
 	if (last) renderAllMarkers(last, getCfg());
 }
 
-LOG("script loaded, version 4.0.0");
+LOG("script loaded, version 4.1.0");
 
 installCapture(onUsage, () => {
 	if (!isPolling()) startPolling(getCfg());
 });
 
 function init() {
-	LOG("init() — installing UI");
+	LOG("init() — installing hooks");
+	// The script now matches all of claude.ai (the usage view is a hash route
+	// reachable from any page), so it must NOT poll, push or inject UI until the
+	// usage view is actually open. installLifecycle() establishes initial state
+	// and activates polling/heartbeat/render only while on #settings/usage.
 	injectPaceStyles();
-	ensureLucide().catch((e) => WARN("Lucide load failed:", e));
 	installLifecycle(
 		rerenderMarkersFromLast,
 		() => startPolling(getCfg()),
@@ -62,9 +64,6 @@ function init() {
 		() => startHeartbeat(getCfg()),
 		stopHeartbeat,
 	);
-	startPolling(getCfg());
-	startHeartbeat(getCfg());
-	tryInjectGear(getCfg, applySettings);
 }
 
 if (document.readyState === "loading") {

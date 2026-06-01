@@ -14,7 +14,8 @@ export function installLifecycle(
 	onResumeHeartbeat,
 	onStopHeartbeat,
 ) {
-	let rerenderInterval = setInterval(onRerender, 30_000);
+	let rerenderInterval = null;
+	let active = false;
 
 	const wrapHistory = (key) => {
 		const orig = history[key];
@@ -27,26 +28,46 @@ export function installLifecycle(
 	wrapHistory("pushState");
 	wrapHistory("replaceState");
 	window.addEventListener("popstate", handleNavigation);
+	// The usage view is now a hash route (e.g. /new#settings/usage), so a
+	// plain hash change — not a history nav — can open/close it.
+	window.addEventListener("hashchange", handleNavigation);
 
+	// Matches the usage view whether it lives in the hash route
+	// (`…#settings/usage`) or, defensively, the path (`/settings/usage`).
+	function onUsageView() {
+		return (
+			/(^|\/)settings\/usage\/?$/.test(location.hash.replace(/^#/, "")) ||
+			/\/settings\/usage\/?$/.test(location.pathname)
+		);
+	}
+
+	// Idempotent — fired by initial load, history navs, popstate and hashchange,
+	// which can overlap for a single transition.
 	function handleNavigation() {
-		const onUsagePage = /\/settings\/usage(\b|\/)/.test(location.pathname);
-		if (!onUsagePage) {
-			LOG("navigated away from /settings/usage — teardown");
-			teardownAll();
-			clearInterval(rerenderInterval);
-			clearRenderRetry();
-			clearGearRetry();
-			onStopPolling();
-			onStopHeartbeat?.();
-		} else {
-			LOG("navigated onto /settings/usage");
-			clearInterval(rerenderInterval);
+		if (onUsageView()) {
+			if (active) return;
+			active = true;
+			LOG("entered #settings/usage — activating");
 			rerenderInterval = setInterval(onRerender, 30_000);
 			onResumePolling();
 			onResumeHeartbeat?.();
 			onRerender();
+		} else {
+			if (!active) return;
+			active = false;
+			LOG("left #settings/usage — teardown");
+			teardownAll();
+			clearInterval(rerenderInterval);
+			rerenderInterval = null;
+			clearRenderRetry();
+			clearGearRetry();
+			onStopPolling();
+			onStopHeartbeat?.();
 		}
 	}
+
+	// Establish initial state — the script may load already on the usage view.
+	handleNavigation();
 
 	function teardownAll() {
 		const gear = document.getElementById(GEAR_ID);

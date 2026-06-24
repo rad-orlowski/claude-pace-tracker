@@ -3,7 +3,7 @@ export { ACTIVE_START_H, ACTIVE_END_H, SLEEP_START_H, NEUTRAL_BAND_PP, NEUTRAL_B
 export const BUCKET_MAP = {
   five_hour:           { title: 'Current session', periodMs: 5 * 60 * 60 * 1000 },
   seven_day:           { title: 'All models',      periodMs: 7 * 24 * 60 * 60 * 1000 },
-  seven_day_sonnet:    { title: 'Sonnet only',     periodMs: 7 * 24 * 60 * 60 * 1000 },
+  seven_day_sonnet:    { title: 'Sonnet',           periodMs: 7 * 24 * 60 * 60 * 1000 },
 };
 
 export const PERIOD_LEN_MS = Object.fromEntries(

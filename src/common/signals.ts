@@ -14,6 +14,9 @@ export const OVER: Severity = "over";
 export const UNDER: Severity = "under";
 export const NEUTRAL: Severity = "neutral";
 
+export const MODEL_LABEL_ALL = "All-models";
+export const MODEL_LABEL_SONNET = "Sonnet";
+
 export interface SignalsCfg {
 	activeStartH: number;
 	activeEndH: number;
@@ -205,12 +208,12 @@ const ACTIVE_RULES: SitRule[] = [
 	{
 		key: "WEEKLY_OVER_CORRECTING",
 		test: (s) => s.allWeekly.sev === OVER && s.allDaily.sev === UNDER,
-		params: (s) => ({ model: "all-models", wDp: Math.round(s.allWeekly.dp) }),
+		params: (s) => ({ model: MODEL_LABEL_ALL, wDp: Math.round(s.allWeekly.dp) }),
 	},
 	{
 		key: "WEEKLY_OVER_CORRECTING",
 		test: (s) => s.sonnetWeekly.sev === OVER && s.sonnetDaily.sev === UNDER,
-		params: (s) => ({ model: "Sonnet", wDp: Math.round(s.sonnetWeekly.dp) }),
+		params: (s) => ({ model: MODEL_LABEL_SONNET, wDp: Math.round(s.sonnetWeekly.dp) }),
 	},
 	{
 		key: "ALL_OVER_SONNET_UNDER",
@@ -249,7 +252,7 @@ const ACTIVE_RULES: SitRule[] = [
 		key: "WEEKLY_UNDER_RECOVERING",
 		test: (s) => s.allWeekly.sev === UNDER && s.allDaily.sev === OVER,
 		params: (s) => ({
-			model: "all-models",
+			model: MODEL_LABEL_ALL,
 			wDp: Math.round(Math.abs(s.allWeekly.dp)),
 			daysLeft: s.daysLeft,
 		}),
@@ -258,7 +261,7 @@ const ACTIVE_RULES: SitRule[] = [
 		key: "WEEKLY_UNDER_RECOVERING",
 		test: (s) => s.sonnetWeekly.sev === UNDER && s.sonnetDaily.sev === OVER,
 		params: (s) => ({
-			model: "Sonnet",
+			model: MODEL_LABEL_SONNET,
 			wDp: Math.round(Math.abs(s.sonnetWeekly.dp)),
 			daysLeft: s.daysLeft,
 		}),
@@ -345,12 +348,12 @@ export function classifySituation(
 	if (allWeekly.pct > 90)
 		return {
 			key: "CRITICAL_LIMIT",
-			params: { model: "All-models", pct: Math.round(allWeekly.pct) },
+			params: { model: MODEL_LABEL_ALL, pct: Math.round(allWeekly.pct) },
 		};
 	if (sonnetWeekly.pct > 90)
 		return {
 			key: "CRITICAL_LIMIT",
-			params: { model: "Sonnet", pct: Math.round(sonnetWeekly.pct) },
+			params: { model: MODEL_LABEL_SONNET, pct: Math.round(sonnetWeekly.pct) },
 		};
 	if (resetInH < 4 && (allWeekly.pct > 75 || sonnetWeekly.pct > 75))
 		return {

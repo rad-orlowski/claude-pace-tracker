@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { buildSignals, classifySituation, SITUATION_MESSAGES } from '../src/userscript/signals.js';
+import { buildSignals, classifySituation, SITUATION_MESSAGES, MODEL_LABEL_ALL, MODEL_LABEL_SONNET } from '../src/userscript/signals.js';
 
 const periodMs = 7 * 24 * 3600 * 1000;
 const sessMs   = 5 * 3600 * 1000;
@@ -88,14 +88,14 @@ test('classifySituation — ALL_CLEAR when all neutral', () => {
 test('classifySituation — CRITICAL_LIMIT when allWeekly pct > 90', () => {
   const { key, params } = classifySituation(makeSignals({ allWPct: 92, allWDP: 60 }), cfg);
   expect(key).toBe('CRITICAL_LIMIT');
-  expect(params.model).toBe('All-models');
+  expect(params.model).toBe(MODEL_LABEL_ALL);
   expect(params.pct).toBe(92);
 });
 
 test('classifySituation — CRITICAL_LIMIT prefers Sonnet when sonnet pct > 90', () => {
   const { key, params } = classifySituation(makeSignals({ allWPct: 70, sonWPct: 95, sonWDP: 60 }), cfg);
   expect(key).toBe('CRITICAL_LIMIT');
-  expect(params.model).toBe('Sonnet');
+  expect(params.model).toBe(MODEL_LABEL_SONNET);
 });
 
 test('classifySituation — RESET_TIGHT when resetInH < 4 and usage high', () => {

@@ -2,7 +2,7 @@
 
 A Tampermonkey userscript that overlays pace indicators on top of [claude.ai/settings/usage](https://claude.ai/settings/usage) — showing whether your token usage is ahead or behind the expected rate for the current time window.
 
-For each usage bar (current 5-hour session, weekly all-models, weekly Sonnet, weekly Opus) it adds:
+For each usage bar (current 5-hour session, weekly all-models, weekly Sonnet) it adds:
 
 - a **"now" marker band** showing where consumption *should* be at this moment
 - an **over/under-pace pill** with the delta in percentage-points
@@ -91,7 +91,7 @@ The session bucket uses wall-clock elapsed time within the 5-hour window, not ac
 
 ## Caveats
 
-- Anthropic can change the usage page DOM at any time; the script locates rows by their heading text (`Current session`, `All models`, `Sonnet only`, `Opus only`). If those strings change, the overlay won't appear and you'll see a console warning.
+- Anthropic can change the usage page DOM at any time; the script locates rows by their heading text (`Current session`, `All models`, `Sonnet`). If those strings change, the overlay won't appear and you'll see a console warning.
 - The script assumes a single timezone (your browser's local time) for the active-hours calculation. If you cross timezones in a single billing week, the numbers will be slightly off.
 - "Active hours" is a heuristic for solo workday usage. If you use Claude in long evening sessions, lower `Sleep starts at` or widen your active window.
 

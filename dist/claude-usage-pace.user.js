@@ -125,7 +125,7 @@
   var BUCKET_MAP = {
     five_hour: { title: "Current session", periodMs: 5 * 60 * 60 * 1000 },
     seven_day: { title: "All models", periodMs: 7 * 24 * 60 * 60 * 1000 },
-    seven_day_sonnet: { title: "Sonnet only", periodMs: 7 * 24 * 60 * 60 * 1000 }
+    seven_day_sonnet: { title: "Sonnet", periodMs: 7 * 24 * 60 * 60 * 1000 }
   };
   var PERIOD_LEN_MS = Object.fromEntries(Object.entries(BUCKET_MAP).map(([k, v]) => [k, v.periodMs]));
   var TITLE_TO_KEY = Object.fromEntries(Object.entries(BUCKET_MAP).map(([k, v]) => [v.title, k]));
@@ -241,6 +241,8 @@
   // src/common/signals.ts
   var OVER = "over";
   var UNDER = "under";
+  var MODEL_LABEL_ALL = "All-models";
+  var MODEL_LABEL_SONNET = "Sonnet";
   var SITUATION_MESSAGES = {
     CRITICAL_LIMIT: (p) => `${p.model} weekly limit at ${p.pct}% — nearly exhausted. Minimise token use.`,
     RESET_TIGHT: (p) => `Reset in ${p.resetInH}h with ${p.pct}% used. Tight — wrap up heavy tasks or wait for the reset.`,
@@ -345,12 +347,12 @@
     {
       key: "WEEKLY_OVER_CORRECTING",
       test: (s) => s.allWeekly.sev === OVER && s.allDaily.sev === UNDER,
-      params: (s) => ({ model: "all-models", wDp: Math.round(s.allWeekly.dp) })
+      params: (s) => ({ model: MODEL_LABEL_ALL, wDp: Math.round(s.allWeekly.dp) })
     },
     {
       key: "WEEKLY_OVER_CORRECTING",
       test: (s) => s.sonnetWeekly.sev === OVER && s.sonnetDaily.sev === UNDER,
-      params: (s) => ({ model: "Sonnet", wDp: Math.round(s.sonnetWeekly.dp) })
+      params: (s) => ({ model: MODEL_LABEL_SONNET, wDp: Math.round(s.sonnetWeekly.dp) })
     },
     {
       key: "ALL_OVER_SONNET_UNDER",
@@ -389,7 +391,7 @@
       key: "WEEKLY_UNDER_RECOVERING",
       test: (s) => s.allWeekly.sev === UNDER && s.allDaily.sev === OVER,
       params: (s) => ({
-        model: "all-models",
+        model: MODEL_LABEL_ALL,
         wDp: Math.round(Math.abs(s.allWeekly.dp)),
         daysLeft: s.daysLeft
       })
@@ -398,7 +400,7 @@
       key: "WEEKLY_UNDER_RECOVERING",
       test: (s) => s.sonnetWeekly.sev === UNDER && s.sonnetDaily.sev === OVER,
       params: (s) => ({
-        model: "Sonnet",
+        model: MODEL_LABEL_SONNET,
         wDp: Math.round(Math.abs(s.sonnetWeekly.dp)),
         daysLeft: s.daysLeft
       })
@@ -474,12 +476,12 @@
     if (allWeekly.pct > 90)
       return {
         key: "CRITICAL_LIMIT",
-        params: { model: "All-models", pct: Math.round(allWeekly.pct) }
+        params: { model: MODEL_LABEL_ALL, pct: Math.round(allWeekly.pct) }
       };
     if (sonnetWeekly.pct > 90)
       return {
         key: "CRITICAL_LIMIT",
-        params: { model: "Sonnet", pct: Math.round(sonnetWeekly.pct) }
+        params: { model: MODEL_LABEL_SONNET, pct: Math.round(sonnetWeekly.pct) }
       };
     if (resetInH < 4 && (allWeekly.pct > 75 || sonnetWeekly.pct > 75))
       return {

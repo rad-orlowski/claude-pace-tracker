@@ -12,14 +12,16 @@ import { injectPaceStyles } from "./ui/styles.js";
 import { installLifecycle } from "./lifecycle.js";
 import { tryInjectGear } from "./ui/components/settings.js";
 import { pushState, startHeartbeat, stopHeartbeat } from "./mcp-push.js";
+import { normalizeUsage } from "./usage-normalize.js";
 
 import { LOG } from "./log.js";
 
 function onUsage(json) {
 	if (!json || typeof json !== "object") return;
-	setLastJson(json);
-	renderAllMarkers(json, getCfg());
-	pushState(json, getCfg());
+	const normalized = normalizeUsage(json);
+	setLastJson(normalized);
+	renderAllMarkers(normalized, getCfg());
+	pushState(normalized, getCfg());
 }
 
 function applySettings(newCfg) {
@@ -44,7 +46,7 @@ function rerenderMarkersFromLast() {
 	if (last) renderAllMarkers(last, getCfg());
 }
 
-LOG("script loaded, version 4.1.1");
+LOG("script loaded, version 4.2.0");
 
 installCapture(onUsage, () => {
 	if (!isPolling()) startPolling(getCfg());

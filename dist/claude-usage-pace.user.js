@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Claude.ai Usage Pace Indicator
 // @namespace    https://github.com/rad-orlowski/claude-pace-tracker
-// @version      4.1.1
+// @version      4.2.0
 // @description  Adds a pace marker and over/under pace badge to each usage bucket in the claude.ai usage panel (the #settings/usage hash route / Settings → Usage modal)
 // @author       Rad Orlowski (https://github.com/rad-orlowski)
 // @homepageURL  https://github.com/rad-orlowski/claude-pace-tracker
@@ -120,12 +120,15 @@
   var ACTIVE_END_H = 20;
   var SLEEP_START_H = 23;
   var NEUTRAL_BAND_PP = 5;
-
+  var DAY_MS = 24 * 60 * 60 * 1000;
+  var WEEK_MS = 7 * DAY_MS;
+  var SESSION_MS = 5 * 60 * 60 * 1000;
   // src/userscript/constants.js
   var BUCKET_MAP = {
-    five_hour: { title: "Current session", periodMs: 5 * 60 * 60 * 1000 },
-    seven_day: { title: "All models", periodMs: 7 * 24 * 60 * 60 * 1000 },
-    seven_day_sonnet: { title: "Sonnet", periodMs: 7 * 24 * 60 * 60 * 1000 }
+    five_hour: { title: "Current session", periodMs: SESSION_MS },
+    seven_day: { title: "All models", periodMs: WEEK_MS },
+    seven_day_sonnet: { title: "Sonnet", periodMs: WEEK_MS },
+    seven_day_fable: { title: "Fable", periodMs: WEEK_MS }
   };
   var PERIOD_LEN_MS = Object.fromEntries(Object.entries(BUCKET_MAP).map(([k, v]) => [k, v.periodMs]));
   var TITLE_TO_KEY = Object.fromEntries(Object.entries(BUCKET_MAP).map(([k, v]) => [v.title, k]));
@@ -275,8 +278,6 @@
       return null;
     if (!sessB || sessB.utilization == null || !sessB.resets_at)
       return null;
-    const wMs = 7 * 24 * 60 * 60 * 1000;
-    const sMs = 5 * 60 * 60 * 1000;
     const allRA = Date.parse(allB.resets_at);
     const sonRA = Date.parse(sonB.resets_at);
     const sessRA = Date.parse(sessB.resets_at);
@@ -284,19 +285,19 @@
       return null;
     const bW = cfg.bandWeekly;
     const bS = cfg.bandSession;
-    const allWElapsed = activeElapsedPctOf(now, allRA, wMs, cfg.activeStartH, cfg.activeEndH);
-    const sonWElapsed = activeElapsedPctOf(now, sonRA, wMs, cfg.activeStartH, cfg.activeEndH);
-    const sessElapsed = activeElapsedPctOf(now, sessRA, sMs, cfg.activeStartH, cfg.activeEndH);
+    const allWElapsed = activeElapsedPctOf(now, allRA, WEEK_MS, cfg.activeStartH, cfg.activeEndH);
+    const sonWElapsed = activeElapsedPctOf(now, sonRA, WEEK_MS, cfg.activeStartH, cfg.activeEndH);
+    const sessElapsed = activeElapsedPctOf(now, sessRA, SESSION_MS, cfg.activeStartH, cfg.activeEndH);
     const allWDp = deltaPpOf(allB.utilization, allWElapsed);
     const sonWDp = deltaPpOf(sonB.utilization, sonWElapsed);
     const sessDp = deltaPpOf(sessB.utilization, sessElapsed);
-    const allTodayExp = todayEndExpectedPctOf(now, allRA, wMs, cfg.activeEndH);
-    const sonTodayExp = todayEndExpectedPctOf(now, sonRA, wMs, cfg.activeEndH);
+    const allTodayExp = todayEndExpectedPctOf(now, allRA, WEEK_MS, cfg.activeEndH);
+    const sonTodayExp = todayEndExpectedPctOf(now, sonRA, WEEK_MS, cfg.activeEndH);
     const allDDp = deltaPpOf(allB.utilization, allTodayExp);
     const sonDDp = deltaPpOf(sonB.utilization, sonTodayExp);
     const resetInMs = Math.min(allRA, sonRA) - now;
     const resetInH = Math.max(0, resetInMs / 3600000);
-    const daysLeft = Math.ceil(resetInMs / (24 * 3600000));
+    const daysLeft = Math.ceil(resetInMs / DAY_MS);
     const win = timeWindowOf(new Date(now), cfg.activeStartH, cfg.activeEndH, cfg.sleepStartH);
     return {
       session: { dp: sessDp, sev: severityOf(sessDp, bS) },
@@ -552,7 +553,7 @@
         },
         {
           start: day + sleepStartH * 3600000,
-          end: day + 24 * 3600000,
+          end: day + DAY_MS,
           color: BAR_COLORS.sleep
         }
       ];
@@ -1633,11 +1634,9 @@
     const allRA = Date.parse(json.seven_day.resets_at);
     const sonRA = Date.parse(json.seven_day_sonnet.resets_at);
     const sessRA = Date.parse(json.five_hour.resets_at);
-    const wMs = 7 * 24 * 3600 * 1000;
-    const sMs = 5 * 3600 * 1000;
-    const allWElapsed = activeElapsedPctOf(nowMs, allRA, wMs, cfg.activeStartH, cfg.activeEndH);
-    const sonWElapsed = activeElapsedPctOf(nowMs, sonRA, wMs, cfg.activeStartH, cfg.activeEndH);
-    const sessElapsed = elapsedPctOf(nowMs, sessRA, sMs);
+    const allWElapsed = activeElapsedPctOf(nowMs, allRA, WEEK_MS, cfg.activeStartH, cfg.activeEndH);
+    const sonWElapsed = activeElapsedPctOf(nowMs, sonRA, WEEK_MS, cfg.activeStartH, cfg.activeEndH);
+    const sessElapsed = elapsedPctOf(nowMs, sessRA, SESSION_MS);
     const { key, params } = classifySituation(signals2, cfg);
     const message = (SITUATION_MESSAGES[key] || (() => key))(params);
     const win = signals2.window;
@@ -1743,13 +1742,43 @@
     _heartbeatTimer = null;
   }
 
+  // src/userscript/usage-normalize.js
+  function keyForLimit(lim) {
+    if (!lim || typeof lim !== "object")
+      return null;
+    if (lim.kind === "session")
+      return "five_hour";
+    if (lim.kind === "weekly_all")
+      return "seven_day";
+    if (lim.kind === "weekly_scoped") {
+      const name = lim.scope && lim.scope.model && lim.scope.model.display_name;
+      return name ? "seven_day_" + name.toLowerCase() : null;
+    }
+    return null;
+  }
+  function normalizeUsage(json) {
+    if (!json || typeof json !== "object" || !Array.isArray(json.limits))
+      return json;
+    const out = { ...json };
+    for (const lim of json.limits) {
+      const key = keyForLimit(lim);
+      if (!key)
+        continue;
+      if (out[key] == null && lim.percent != null && lim.resets_at) {
+        out[key] = { utilization: lim.percent, resets_at: lim.resets_at };
+      }
+    }
+    return out;
+  }
+
   // src/userscript/main.js
   function onUsage(json) {
     if (!json || typeof json !== "object")
       return;
-    setLastJson(json);
-    renderAllMarkers(json, getCfg());
-    pushState(json, getCfg());
+    const normalized = normalizeUsage(json);
+    setLastJson(normalized);
+    renderAllMarkers(normalized, getCfg());
+    pushState(normalized, getCfg());
   }
   function applySettings(newCfg) {
     const prev = getCfg();
@@ -1774,7 +1803,7 @@
     if (last)
       renderAllMarkers(last, getCfg());
   }
-  LOG("script loaded, version 4.1.1");
+  LOG("script loaded, version 4.2.0");
   installCapture(onUsage, () => {
     if (!isPolling())
       startPolling(getCfg());

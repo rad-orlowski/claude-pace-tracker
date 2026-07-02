@@ -4,6 +4,7 @@ import {
 	SITUATION_MESSAGES,
 } from "./signals.js";
 import { activeElapsedPctOf, elapsedPctOf } from "./math.js";
+import { WEEK_MS, SESSION_MS } from "./constants.js";
 
 /** Maps internal severity + window → MCP trend enum for the push payload. */
 function trendOf(severity, window, dp) {
@@ -23,24 +24,22 @@ export function buildPushPayload(json, nowMs, cfg) {
 	const allRA = Date.parse(json.seven_day.resets_at);
 	const sonRA = Date.parse(json.seven_day_sonnet.resets_at);
 	const sessRA = Date.parse(json.five_hour.resets_at);
-	const wMs = 7 * 24 * 3600 * 1000;
-	const sMs = 5 * 3600 * 1000;
 
 	const allWElapsed = activeElapsedPctOf(
 		nowMs,
 		allRA,
-		wMs,
+		WEEK_MS,
 		cfg.activeStartH,
 		cfg.activeEndH,
 	);
 	const sonWElapsed = activeElapsedPctOf(
 		nowMs,
 		sonRA,
-		wMs,
+		WEEK_MS,
 		cfg.activeStartH,
 		cfg.activeEndH,
 	);
-	const sessElapsed = elapsedPctOf(nowMs, sessRA, sMs);
+	const sessElapsed = elapsedPctOf(nowMs, sessRA, SESSION_MS);
 
 	const { key, params } = classifySituation(signals, cfg);
 	const message = (SITUATION_MESSAGES[key] || (() => key))(params);

@@ -2,7 +2,7 @@
 
 A Tampermonkey userscript that overlays pace indicators on top of [claude.ai/settings/usage](https://claude.ai/settings/usage) — showing whether your token usage is ahead or behind the expected rate for the current time window.
 
-For each usage bar (current 5-hour session, weekly all-models, weekly Sonnet) it adds:
+For each usage bar (current 5-hour session, weekly all-models, and each weekly per-model bar — e.g. Sonnet, Fable) it adds:
 
 - a **"now" marker band** showing where consumption *should* be at this moment
 - an **over/under-pace pill** with the delta in percentage-points
@@ -75,8 +75,9 @@ The script:
 
 1. **Patches `window.fetch`** at `document-start` to intercept responses from `/api/organizations/{orgId}/usage`.
 2. Once the org ID is known, **polls that same endpoint** at the configured interval (default 10 min).
-3. Renders the marker band, pace pill, and situation card by injecting DOM into the existing usage page.
-4. Re-injects on SPA navigation (the usage page is part of the React app), tearing down cleanly when you leave.
+3. **Normalizes the response** so per-model weekly bars (e.g. Sonnet, Fable) are read from the API's `limits[]` array — where Claude now reports scoped usage — as well as the legacy top-level fields.
+4. Renders the marker band, pace pill, and situation card by injecting DOM into the existing usage page.
+5. Re-injects on SPA navigation (the usage page is part of the React app), tearing down cleanly when you leave.
 
 **The pace math:** the weekly quota is treated as something that should be consumed evenly across *active hours only* (default 07:00–20:00, configurable). At any moment, `expected_pct = (active hours elapsed today + full active days passed this week) / total active hours in a week × 100`. The pace delta is `actual_utilization - expected_pct`. So at 13:00 on Wednesday, with default settings, you should be ~46% through your weekly quota; if you're at 60%, the pill shows `+14pp`.
 
@@ -91,7 +92,7 @@ The session bucket uses wall-clock elapsed time within the 5-hour window, not ac
 
 ## Caveats
 
-- Anthropic can change the usage page DOM at any time; the script locates rows by their heading text (`Current session`, `All models`, `Sonnet`). If those strings change, the overlay won't appear and you'll see a console warning.
+- Anthropic can change the usage page DOM at any time; the script locates rows by their heading text (`Current session`, `All models`, `Sonnet`, `Fable`). If those strings change, the overlay won't appear and you'll see a console warning.
 - The script assumes a single timezone (your browser's local time) for the active-hours calculation. If you cross timezones in a single billing week, the numbers will be slightly off.
 - "Active hours" is a heuristic for solo workday usage. If you use Claude in long evening sessions, lower `Sleep starts at` or widen your active window.
 

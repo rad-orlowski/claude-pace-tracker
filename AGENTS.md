@@ -4,7 +4,7 @@ This document provides onboarding guidance for AI agents working on this reposit
 
 ## Project overview
 
-A Tampermonkey userscript that overlays pace indicators on `claude.ai/settings/usage` — showing whether token usage is ahead or behind the expected rate for the current time window. The script adds a "now" marker band, over/under-pace pills, and a situation summary card to each usage bar (current 5-hour session, weekly all-models, weekly Sonnet, weekly Opus).
+A Tampermonkey userscript that overlays pace indicators on `claude.ai/settings/usage` — showing whether token usage is ahead or behind the expected rate for the current time window. The script adds a "now" marker band, over/under-pace pills, and a situation summary card to each usage bar (current 5-hour session, weekly all-models, and per-model weekly bars such as Sonnet and Fable).
 
 An optional companion MCP server lets Claude Code query pace statistics mid-session by receiving pre-computed state pushed from the userscript.
 
@@ -37,18 +37,21 @@ Build details: `build.ts` bundles `src/userscript/main.js` as an IIFE for browse
 
 2. **Polling** (`polling.js`) — Once the org ID is known, polls the same endpoint at a configurable interval (default 10 minutes) using `GM_xmlhttpRequest`.
 
-3. **Render** (`render.js`) — For each usage bucket, locates the DOM row by its heading text, applies a bar gradient, positions the "now" marker band, and builds/updates the pace pill. Includes a retry loop (100 ms × 30) for DOM readiness.
+3. **Normalize** (`usage-normalize.js`) — `onUsage` (in `main.js`) runs `normalizeUsage` on every captured/polled response. The `/usage` API is migrating per-model weekly data out of the legacy top-level `seven_day_<model>` keys (now often `null`) into a `limits[]` array — entries carry `kind` (`session` / `weekly_all` / `weekly_scoped`), `percent`, `resets_at`, and for scoped entries `scope.model.display_name` (e.g. `"Fable"`). `normalizeUsage` projects `limits[]` back into the legacy `{ utilization, resets_at }` bucket shape keyed `seven_day_<display_name lowercased>`, filling only null/absent top-level keys; responses without `limits[]` pass through unchanged. Render/signals/payload consume the normalized object unchanged.
 
-4. **Signals** (`signals.js`) — Calls `buildSignals` + `classifySituation` to compute pace deltas, severity, and pick the highest-priority situation message for the summary card.
+4. **Render** (`render.js`) — For each usage bucket, locates the DOM row by its heading text, applies a bar gradient, positions the "now" marker band, and builds/updates the pace pill. Includes a retry loop (100 ms × 30) for DOM readiness.
 
-5. **Config** (`config.js`) — Loads settings from `localStorage` on first access, merges over `CFG_DEFAULTS`, saves back on every change via the gear panel.
+5. **Signals** (`signals.js`) — Calls `buildSignals` + `classifySituation` to compute pace deltas, severity, and pick the highest-priority situation message for the summary card.
 
-6. **Lifecycle** (`lifecycle.js`) — Wraps `history.pushState/replaceState` and listens for `popstate` to detect SPA navigation. Tears down all injected DOM nodes when leaving `/settings/usage`; re-injects and resumes polling on return. Re-renders every 30 seconds.
+6. **Config** (`config.js`) — Loads settings from `localStorage` on first access, merges over `CFG_DEFAULTS`, saves back on every change via the gear panel.
+
+7. **Lifecycle** (`lifecycle.js`) — Wraps `history.pushState/replaceState` and listens for `popstate` to detect SPA navigation. Tears down all injected DOM nodes when leaving `/settings/usage`; re-injects and resumes polling on return. Re-renders every 30 seconds.
 
 **Module map:**
 
 - `capture.js` — Fetch patching and org ID extraction
 - `polling.js` — Periodic `/usage` polling via `GM_xmlhttpRequest`
+- `usage-normalize.js` — Projects the `/usage` `limits[]` array into the legacy per-model bucket shape
 - `render.js` — DOM injection (bar gradients, marker bands, pills, situation card)
 - `math.js` — Pure functions for pace math (active-hours elapsed, delta, severity)
 - `constants.js` — Bucket definitions, time window defaults, neutral bands
@@ -74,6 +77,7 @@ src/
 │   ├── main.js          # Entry point, init, lifecycle orchestration
 │   ├── capture.js       # Fetch patching
 │   ├── polling.js       # Periodic API polling
+│   ├── usage-normalize.js # limits[] → legacy bucket shape
 │   ├── render.js        # DOM injection and updates
 │   ├── math.js          # Re-exports from common/
 │   ├── constants.js     # Re-exports from common/
@@ -85,7 +89,7 @@ src/
 │   ├── payload.js       # Payload shaping
 │   └── ui/              # Styles, icons, settings UI
 ├── common/              # Shared TypeScript (userscript + MCP)
-│   ├── constants.ts     # Active hours, neutral bands, bucket defs
+│   ├── constants.ts     # Active hours, neutral band, period constants
 │   ├── math.ts          # Active-hours elapsed, delta, severity
 │   └── signals.ts       # Signal aggregation, situation classification
 └── mcp/                 # Optional MCP server
@@ -144,7 +148,7 @@ package.json             # Root metadata and scripts
 - **Don't modify `meta.txt` grants or `@match` without understanding the userscript lifecycle** — the script runs at `document-start` and requires `GM_xmlhttpRequest` for polling.
 - **Don't confuse session vs. weekly math** — the session bucket (`five_hour`) uses wall-clock elapsed time, not active-hours math. Weekly buckets use `activeElapsedPctOf`.
 - **Don't assume MCP server is always running** — it's optional. The userscript silently no-ops on push failures and shows "MCP not detected" in the gear panel.
-- **Don't rely on DOM stability** — Anthropic can change the usage page DOM at any time. The script locates rows by heading text (`Current session`, `All models`, `Sonnet only`, `Opus only`). If those strings change, the overlay won't appear.
+- **Don't rely on DOM stability** — Anthropic can change the usage page DOM at any time. The script locates rows by heading text (`Current session`, `All models`, `Sonnet`, `Fable`). If those strings change, the overlay won't appear.
 - **Don't use `fetch` directly in the userscript** — use the patched `window.fetch` or `GM_xmlhttpRequest` to avoid CORS issues with `https://claude.ai/api/…`.
 - **Don't forget to rebuild after shared code changes** — `src/common/` changes affect both the userscript and MCP server; run `bun run build` to rebuild both.
 

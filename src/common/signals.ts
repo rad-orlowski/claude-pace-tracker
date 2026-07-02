@@ -6,6 +6,7 @@ import {
 	severityOf,
 	signedPp,
 } from "./math.js";
+import { WEEK_MS, SESSION_MS, DAY_MS } from "./constants.js";
 
 export type Severity = "over" | "under" | "neutral";
 export type TimeWindow = "active" | "bonus" | "sleep";
@@ -90,8 +91,6 @@ export function buildSignals(
 	if (!sonB || sonB.utilization == null || !sonB.resets_at) return null;
 	if (!sessB || sessB.utilization == null || !sessB.resets_at) return null;
 
-	const wMs = 7 * 24 * 60 * 60 * 1000;
-	const sMs = 5 * 60 * 60 * 1000;
 	const allRA = Date.parse(allB.resets_at);
 	const sonRA = Date.parse(sonB.resets_at);
 	const sessRA = Date.parse(sessB.resets_at);
@@ -108,21 +107,21 @@ export function buildSignals(
 	const allWElapsed = activeElapsedPctOf(
 		now,
 		allRA,
-		wMs,
+		WEEK_MS,
 		cfg.activeStartH,
 		cfg.activeEndH,
 	);
 	const sonWElapsed = activeElapsedPctOf(
 		now,
 		sonRA,
-		wMs,
+		WEEK_MS,
 		cfg.activeStartH,
 		cfg.activeEndH,
 	);
 	const sessElapsed = activeElapsedPctOf(
 		now,
 		sessRA,
-		sMs,
+		SESSION_MS,
 		cfg.activeStartH,
 		cfg.activeEndH,
 	);
@@ -131,14 +130,14 @@ export function buildSignals(
 	const sonWDp = deltaPpOf(sonB.utilization, sonWElapsed);
 	const sessDp = deltaPpOf(sessB.utilization, sessElapsed);
 
-	const allTodayExp = todayEndExpectedPctOf(now, allRA, wMs, cfg.activeEndH);
-	const sonTodayExp = todayEndExpectedPctOf(now, sonRA, wMs, cfg.activeEndH);
+	const allTodayExp = todayEndExpectedPctOf(now, allRA, WEEK_MS, cfg.activeEndH);
+	const sonTodayExp = todayEndExpectedPctOf(now, sonRA, WEEK_MS, cfg.activeEndH);
 	const allDDp = deltaPpOf(allB.utilization, allTodayExp);
 	const sonDDp = deltaPpOf(sonB.utilization, sonTodayExp);
 
 	const resetInMs = Math.min(allRA, sonRA) - now;
 	const resetInH = Math.max(0, resetInMs / 3600000);
-	const daysLeft = Math.ceil(resetInMs / (24 * 3600000));
+	const daysLeft = Math.ceil(resetInMs / DAY_MS);
 
 	const win = timeWindowOf(
 		new Date(now),

@@ -2,6 +2,7 @@ import {
 	ACTIVE_START_H,
 	ACTIVE_END_H,
 	SLEEP_START_H,
+	DAY_MS,
 } from "../../constants.js";
 
 export const BAR_COLORS = {
@@ -45,7 +46,7 @@ export function buildBarGradient(
 			},
 			{
 				start: day + sleepStartH * 3600000,
-				end: day + 24 * 3600000,
+				end: day + DAY_MS,
 				color: BAR_COLORS.sleep,
 			},
 		];

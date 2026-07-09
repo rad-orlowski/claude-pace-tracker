@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Claude.ai Usage Pace Indicator
 // @namespace    https://github.com/rad-orlowski/claude-pace-tracker
-// @version      4.2.0
+// @version      4.2.1
 // @description  Adds a pace marker and over/under pace badge to each usage bucket in the claude.ai usage panel (the #settings/usage hash route / Settings → Usage modal)
 // @author       Rad Orlowski (https://github.com/rad-orlowski)
 // @homepageURL  https://github.com/rad-orlowski/claude-pace-tracker
@@ -892,7 +892,7 @@
   var KNOWN_TITLES = new Set(Object.values(BUCKET_MAP).map((m) => m.title));
   function rebuildRowCache() {
     rowCache.clear();
-    for (const bar of document.querySelectorAll('[role="progressbar"]')) {
+    for (const bar of document.querySelectorAll('[role="meter"]')) {
       const barWrapper = bar.parentElement;
       const progressContainer = barWrapper && barWrapper.parentElement;
       const row = progressContainer && progressContainer.parentElement;
@@ -1602,7 +1602,7 @@
       if (gear)
         gear.remove();
       document.querySelectorAll("." + MARKER_CLASS + ", ." + PILL_CLASS + ", ." + MASK_CLASS + ", ." + SUMMARY_CLASS + ", ." + DAY_DIV_CLASS).forEach((n) => n.remove());
-      document.querySelectorAll('[role="progressbar"]').forEach((bar) => {
+      document.querySelectorAll('[role="meter"]').forEach((bar) => {
         bar.style.background = "";
         bar.style.border = "";
         bar.style.position = "";
@@ -1803,7 +1803,7 @@
     if (last)
       renderAllMarkers(last, getCfg());
   }
-  LOG("script loaded, version 4.2.0");
+  LOG("script loaded, version 4.2.1");
   installCapture(onUsage, () => {
     if (!isPolling())
       startPolling(getCfg());

@@ -86,7 +86,7 @@ export function installLifecycle(
 					DAY_DIV_CLASS,
 			)
 			.forEach((n) => n.remove());
-		document.querySelectorAll('[role="progressbar"]').forEach((bar) => {
+		document.querySelectorAll('[role="meter"]').forEach((bar) => {
 			bar.style.background = "";
 			bar.style.border = "";
 			bar.style.position = "";

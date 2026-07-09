@@ -131,7 +131,7 @@ Create DOM elements programmatically to mimic actual page structure:
 
 ```typescript
 const bar = document.createElement('div');
-bar.setAttribute('role', 'progressbar');
+bar.setAttribute('role', 'meter');
 bar.style.width = '50%';
 bar.style.height = '8px';
 bar.style.background = '#f0f0f0';

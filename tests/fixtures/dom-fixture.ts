@@ -27,9 +27,9 @@ export function createUsageRow(title: string, utilization: number, label: string
 	const barWrapper = document.createElement('div');
 	barWrapper.className = 'flex-1';
 	
-	// Progress bar (role="progressbar")
+	// Progress bar (role="meter")
 	const bar = document.createElement('div');
-	bar.setAttribute('role', 'progressbar');
+	bar.setAttribute('role', 'meter');
 	bar.style.width = `${utilization}%`;
 	bar.style.height = '8px';
 	bar.style.background = '#f0f0f0';
@@ -177,7 +177,7 @@ export function resetDOM(): void {
  * Helper to verify marker was added correctly
  */
 export function findMarkerInRow(row: HTMLElement): HTMLElement | null {
-	const bar = row.querySelector('[role="progressbar"]');
+	const bar = row.querySelector('[role="meter"]');
 	if (!bar) return null;
 	
 	const barWrapper = bar.parentElement;
@@ -200,7 +200,7 @@ export function findPillInRow(row: HTMLElement): HTMLElement | null {
  * Helper to verify bar gradient was applied
  */
 export function getBarGradient(row: HTMLElement): string | null {
-	const bar = row.querySelector('[role="progressbar"]');
+	const bar = row.querySelector('[role="meter"]');
 	if (!bar) return null;
 	
 	return (bar as HTMLElement).style.background || null;

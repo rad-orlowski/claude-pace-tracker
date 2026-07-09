@@ -5,7 +5,7 @@ const KNOWN_TITLES = new Set(Object.values(BUCKET_MAP).map(m => m.title));
 
 export function rebuildRowCache() {
   rowCache.clear();
-  for (const bar of document.querySelectorAll('[role="progressbar"]')) {
+  for (const bar of document.querySelectorAll('[role="meter"]')) {
     const barWrapper = bar.parentElement;
     const progressContainer = barWrapper && barWrapper.parentElement;
     const row = progressContainer && progressContainer.parentElement;
